@@ -1,0 +1,21 @@
+version: "3.9"
+
+services:
+  ingest:
+    build: ./services/ingest
+    ports:
+      - "8081:8080"
+
+  processor:
+    build: ./services/processor
+    ports:
+      - "8082:8080"
+    depends_on:
+      - ingest
+
+  notifier:
+    build: ./services/notifier
+    ports:
+      - "8083:8080"
+    depends_on:
+      - processor
