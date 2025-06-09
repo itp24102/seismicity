@@ -14,8 +14,10 @@ spec:
       labels:
         app: processor
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       containers:
-      - name: processor
-        image: ghcr.io/itp24102/processor:latest
-        ports:
-        - containerPort: 8080
+        - name: processor
+          image: ghcr.io/itp24102/processor:latest
+          ports:
+            - containerPort: 8080

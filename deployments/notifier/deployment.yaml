@@ -14,8 +14,10 @@ spec:
       labels:
         app: notifier
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       containers:
-      - name: notifier
-        image: ghcr.io/itp24102/notifier:latest
-        ports:
-        - containerPort: 8080
+        - name: notifier
+          image: ghcr.io/itp24102/notifier:latest
+          ports:
+            - containerPort: 8080
