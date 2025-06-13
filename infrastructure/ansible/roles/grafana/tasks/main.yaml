@@ -1,0 +1,15 @@
+- name: Add grafana repository
+  kubernetes.core.helm_repository:
+    name: grafana
+    repo_url: "https://grafana.github.io/helm-charts"
+
+- name: Install grafana
+  kubernetes.core.helm:
+    name: grafana
+    chart_ref: grafana/grafana
+    release_namespace: grafana
+    create_namespace: true
+    values:
+      service:
+        nodePort: 32002
+        type: NodePort
