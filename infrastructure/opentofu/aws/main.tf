@@ -11,11 +11,6 @@ resource "aws_s3_bucket" "seismicity_bucket" {
   }
 }
 
-resource "aws_s3_bucket_acl" "seismicity_bucket_acl" {
-  bucket = aws_s3_bucket.seismicity_bucket.id
-  acl    = "private"
-}
-
 resource "aws_iam_role" "lambda_role" {
   name = "seismicity-lambda-role"
 
