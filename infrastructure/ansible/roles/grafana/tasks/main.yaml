@@ -1,15 +1,37 @@
-- name: Add grafana repository
-  kubernetes.core.helm_repository:
-    name: grafana
-    repo_url: "https://grafana.github.io/helm-charts"
-
-- name: Install grafana
+- name: Install Grafana with datasources and config
   kubernetes.core.helm:
     name: grafana
     chart_ref: grafana/grafana
     release_namespace: grafana
     create_namespace: true
     values:
+      datasources:
+        datasources.yaml: "{{ lookup('template', 'templates/datasources.yaml.j2') | from_yaml }}"
       service:
-        nodePort: 32002
         type: NodePort
+        nodePort: 32002
+      sidecar:
+        dashboards:
+          enabled: true
+          label: grafana_dashboard
+          labelValue: "1"
+          searchNamespace: grafana
+
+- name: Create ConfigMap for Grafana Dashboard
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: k8s-dashboards-cm
+        namespace: grafana
+        labels:
+          grafana_dashboard: "1"
+      data:
+        k8s-cluster.json: "{{ lookup('file', 'roles/grafana/files/k8s-cluster.json') | string }}"
+
+- name: Print rendered template
+  debug:
+    msg: "{{ lookup('template', 'templates/datasources.yaml.j2') }}"
+  when: debug is defined

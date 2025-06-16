@@ -1,7 +1,7 @@
 - name: Deploy services to microk8s
-  hosts: local
+  hosts: servers
   gather_facts: no
   roles:
-    - jenkins
-    - prometheus
+    # - jenkins
+    # - prometheus
     - grafana
