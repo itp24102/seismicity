@@ -1,23 +1,29 @@
 pipeline {
-  agent any
-  environment {
-    REGISTRY = 'ghcr.io/itp24102'
-    IMAGE = "${REGISTRY}/poller:latest"
-  }
-  stages {
-    stage('Checkout') { steps { checkout scm } }
-    stage('Build')    { sh "docker build -t ${IMAGE} services/poller" }
-    stage('Push') {
-      withCredentials([usernamePassword(credentialsId: 'ghcr-pat', 
-                                       usernameVariable: 'USER', 
-                                       passwordVariable: 'PAT')]) {
-        sh "echo $PAT | docker login ghcr.io -u $USER --password-stdin"
-        sh "docker push ${IMAGE}"
-      }
+    agent any
+
+    environment {
+        IMAGE = "ghcr.io/itp24102/poller:latest"
+        GITHUB_USER = "itp24102"
+        GITHUB_PAT = credentials('ghcr-pat')
     }
-    stage('Notify') {
-      // trigger ArgoCD to pick up new image via Git update
-      sh "argocd app sync seismicity-app"
+
+    stages {
+        stage('Build') {
+            steps {
+                script {
+                    docker.build("${IMAGE}", "--file services/poller/Dockerfile services/poller")
+                }
+            }
+        }
+
+        stage('Push') {
+            steps {
+                script {
+                    docker.withRegistry('https://ghcr.io', 'ghcr-pat') {
+                        docker.image("${IMAGE}").push()
+                    }
+                }
+            }
+        }
     }
-  }
 }
