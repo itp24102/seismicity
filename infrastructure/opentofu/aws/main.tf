@@ -48,7 +48,7 @@ resource "aws_lambda_function" "seismicity" {
 
   runtime = "python3.9"
 
-  filename = "function.zip"  # Θα το ανεβάσεις αφού κάνεις build το handler σου
+  filename = "function.zip"
 
   environment {
     variables = {

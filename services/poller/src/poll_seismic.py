@@ -1,91 +1,102 @@
-import feedparser
+import os
+import time
+import requests
 import boto3
-import json
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from geopy.distance import geodesic
 
-# AWS S3 configuration
-S3_BUCKET = "seismicity-app-bucket"
+URL = "http://www.geophysics.geol.uoa.gr/stations/maps/recent_eq_1d_el.xml"
 
-# List of major Greek cities with their geographic coords
-GREEK_CITIES = [
-    {"name": "Αθήνα", "latitude": 37.9838, "longitude": 23.7275},
-    {"name": "Θεσσαλονίκη", "latitude": 40.6401, "longitude": 22.9444},
-    {"name": "Πάτρα", "latitude": 38.2466, "longitude": 21.7346},
-    {"name": "Ηράκλειο", "latitude": 35.3387, "longitude": 25.1442},
-    {"name": "Λάρισα", "latitude": 39.639, "longitude": 22.4191},
-    {"name": "Βόλος", "latitude": 39.361, "longitude": 22.9425},
-    {"name": "Ιωάννινα", "latitude": 39.665, "longitude": 20.8537},
-    {"name": "Τρίκαλα", "latitude": 39.5557, "longitude": 21.7679},
-    {"name": "Χαλκίδα", "latitude": 38.4636, "longitude": 23.6021},
-    {"name": "Σέρρες", "latitude": 41.085, "longitude": 23.5479},
-    {"name": "Αλεξανδρούπολη", "latitude": 40.8457, "longitude": 25.8736},
-    {"name": "Καλαμάτα", "latitude": 37.0389, "longitude": 22.1142},
-    {"name": "Καβάλα", "latitude": 40.9369, "longitude": 24.4126},
-    {"name": "Κατερίνη", "latitude": 40.2696, "longitude": 22.5061},
-    {"name": "Χανιά", "latitude": 35.5138, "longitude": 24.018},
-    {"name": "Λαμία", "latitude": 38.9, "longitude": 22.4333},
-    {"name": "Ρόδος", "latitude": 36.434, "longitude": 28.2176},
-    {"name": "Κομοτηνή", "latitude": 41.1175, "longitude": 25.4058},
-    {"name": "Ξάνθη", "latitude": 41.1349, "longitude": 24.888},
-    {"name": "Αγρίνιο", "latitude": 38.6218, "longitude": 21.407},
-    {"name": "Δράμα", "latitude": 41.1496, "longitude": 24.1472},
-    {"name": "Βέροια", "latitude": 40.5244, "longitude": 22.2012},
-    {"name": "Κέρκυρα (πόλη)", "latitude": 39.62, "longitude": 19.92},
-    {"name": "Γιαννιτσά", "latitude": 40.7919, "longitude": 22.4072},
-    {"name": "Ρέθυμνο", "latitude": 35.3644, "longitude": 24.4821},
-]
+S3_BUCKET = os.environ.get("S3_BUCKET", "seismicity-app-bucket")
+S3_KEY_PREFIX = os.environ.get("S3_KEY_PREFIX", "events/")
+AWS_REGION = os.environ.get("AWS_REGION", "eu-west-1")
+POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "300"))  # default: every 5 minutes
+
+# List of known cities with coordinates
+CITIES = {
+    "Αθήνα": (37.9838, 23.7275),
+    "Θεσσαλονίκη": (40.6401, 22.9444),
+    "Πάτρα": (38.2466, 21.7346),
+    "Ηράκλειο": (35.3387, 25.1442),
+    "Λάρισα": (39.639, 22.4191),
+    "Βόλος": (39.361, 22.9425),
+    "Ιωάννινα": (39.665, 20.8537),
+    "Τρίκαλα": (39.5557, 21.7679),
+    "Χαλκίδα": (38.4636, 23.6021),
+    "Σέρρες": (41.085, 23.5479),
+    "Αλεξανδρούπολη": (40.8457, 25.8736),
+    "Καλαμάτα": (37.0389, 22.1142),
+    "Καβάλα": (40.9369, 24.4126),
+    "Κατερίνη": (40.2696, 22.5061),
+    "Χανιά": (35.5138, 24.018),
+    "Λαμία": (38.9, 22.4333),
+    "Ρόδος": (36.434, 28.2176),
+    "Κομοτηνή": (41.1175, 25.4058),
+    "Ξάνθη": (41.1349, 24.888),
+    "Αγρίνιο": (38.6218, 21.407),
+    "Δράμα": (41.1496, 24.1472),
+    "Βέροια": (40.5244, 22.2012),
+    "Κέρκυρα (πόλη)": (39.62, 19.92),
+    "Γιαννιτσά": (40.7919, 22.4072),
+    "Ρέθυμνο": (35.3644, 24.4821),
+}
+
+def fetch_earthquake_data():
+    response = requests.get(URL)
+    response.raise_for_status()
+    return ET.fromstring(response.content)
 
 def find_closest_city(lat, lon):
-    """Returns the closest city from GREEK_CITIES to a given point."""
-    min_dist = float('inf')
-    closest = None
-    for city in GREEK_CITIES:
-        city_coords = (city['latitude'], city['longitude'])
-        dist = geodesic((lat, lon), city_coords).kilometers
-        if dist < min_dist:
-            min_dist = dist
-            closest = city
-    return closest, min_dist
+    quake_location = (lat, lon)
+    closest_city = min(CITIES.items(), key=lambda city: geodesic(quake_location, city[1]).km)
+    return closest_city[0]
 
-def fetch_seismic_data(url="http://www.geophysics.geol.uoa.gr/stations/maps/seismicity.xml"):
-    """Parses RSS feed of earthquakes."""
-    feed = feedparser.parse(url)
-    earthquakes = []
+def parse_and_upload_to_s3(xml_root):
+    s3 = boto3.client("s3", region_name=AWS_REGION)
+    for event in xml_root.findall("event"):
+        event_data = {
+            "date": event.findtext("date"),
+            "time": event.findtext("time"),
+            "lat": event.findtext("lat"),
+            "lon": event.findtext("lon"),
+            "depth": event.findtext("depth"),
+            "mag": event.findtext("mag"),
+            "region": event.findtext("region"),
+        }
 
-    for entry in feed.entries:
-        coords = entry.georss_point.split()
-        lat = float(coords[0]) 
-        lon = float(coords[1])
+        if not all(event_data.values()):
+            continue
 
-        city, distance = find_closest_city(lat, lon)
+        event_id = f"{event_data['date']}T{event_data['time'].replace(':', '')}_{event_data['lat']}_{event_data['lon']}"
+        lat = float(event_data["lat"])
+        lon = float(event_data["lon"])
+        event_data["closest_city"] = find_closest_city(lat, lon)
+        timestamp = datetime.strptime(f"{event_data['date']} {event_data['time']}", "%Y-%m-%d %H:%M:%S").isoformat()
+        event_data["timestamp"] = timestamp
 
-        earthquakes.append({ 
-            "id": entry.id,
-            "time": entry.published,
-            "latitude": lat,
-            "longitude": lon,
-            "magnitude": float(entry.title.split()[1]),
-            "depth": float(entry.summary.split()[2]),
-            "closest_city": city['name'],
-            "distance_km": distance
-        })
-    return earthquakes
+        # Construct filename and key
+        filename = f"{event_id}.json"
+        key = f"{S3_KEY_PREFIX}{filename}"
 
-def store_to_s3(earthquake):
-    """Saves earthquake data to S3 in JSON format."""
-    s3 = boto3.client('s3')
-    date = datetime.utcnow().date()
-    key = f"{date}/{earthquake['id']}.json"
-
-    s3.put_object(Bucket=S3_BUCKET, Key=key, Body=json.dumps(earthquake))
-    print(f"Stored {earthquake['id']} to s3://{S3_BUCKET}/{key}")
+        # Upload to S3
+        s3.put_object(
+            Bucket=S3_BUCKET,
+            Key=key,
+            Body=str(event_data),
+            ContentType="application/json"
+        )
+        print(f"[✔] Uploaded event {event_id} to s3://{S3_BUCKET}/{key}")
 
 def main():
-    """Main pipeline."""
-    earthquakes = fetch_seismic_data()
-    for eq in earthquakes:
-        store_to_s3(eq)
+    print(f"[✓] Starting poller for {URL}")
+    while True:
+        try:
+            xml_root = fetch_earthquake_data()
+            parse_and_upload_to_s3(xml_root)
+        except Exception as e:
+            print(f"[!] Error during poll: {e}")
+        time.sleep(POLL_INTERVAL)
 
 if __name__ == "__main__":
     main()
