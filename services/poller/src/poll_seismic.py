@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 import boto3
 import xml.etree.ElementTree as ET
@@ -63,9 +64,17 @@ def parse_and_upload(xml_root):
         )
         print(f"✅ Uploaded: {s3_key} | {data['city']}")
 
+POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "10"))  # default = 10s
+
 def main():
     root = fetch_xml()
     parse_and_upload(root)
 
 if __name__ == "__main__":
-    main()
+    while True:
+        try:
+            print(f"🔁 Polling at {datetime.now().isoformat()}")
+            main()
+        except Exception as e:
+            print(f"❌ Σφάλμα: {e}")
+        time.sleep(POLL_INTERVAL)
