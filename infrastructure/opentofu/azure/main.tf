@@ -123,13 +123,14 @@ resource "azurerm_public_ip" "main" {
   location            = var.location
   allocation_method   = "Dynamic"
   sku                 = "Basic"
+  domain_name_label   = var.dns_name_label
 }
 
 resource "azurerm_linux_virtual_machine" "main" {
   name                = var.vm_name
   resource_group_name = azurerm_resource_group.main.name
   location            = var.location
-  size                = "Standard_B2s"
+  size                = "Standard_B2ms"
   admin_username      = var.admin_username
 
   network_interface_ids = [

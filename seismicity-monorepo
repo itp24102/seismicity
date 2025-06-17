@@ -1,0 +1,115 @@
+seismicity-monorepo
+├── Jenkinsfile
+├── README.md
+├── deployments
+│   ├── ingest
+│   │   ├── deployment.yaml
+│   │   ├── kustomization.yaml
+│   │   └── service.yaml
+│   ├── kustomization.yaml
+│   ├── notifier
+│   │   ├── deployment.yaml
+│   │   ├── kustomization.yaml
+│   │   └── service.yaml
+│   └── processor
+│       ├── deployment.yaml
+│       ├── kustomization.yaml
+│       └── service.yaml
+├── docker-compose.yml
+├── infrastructure
+│   ├── ansible
+│   │   ├── inventories
+│   │   │   └── production
+│   │   │       └── hosts.ini
+│   │   ├── roles
+│   │   │   ├── grafana
+│   │   │   │   ├── files
+│   │   │   │   │   └── k8s-cluster.json
+│   │   │   │   ├── tasks
+│   │   │   │   │   └── main.yaml
+│   │   │   │   └── templates
+│   │   │   │       └── datasources.yaml.j2
+│   │   │   ├── jenkins
+│   │   │   │   └── tasks
+│   │   │   │       └── main.yaml
+│   │   │   └── prometheus
+│   │   │       └── tasks
+│   │   │           └── main.yaml
+│   │   └── site.yaml
+│   └── opentofu
+│       ├── .gitignore
+│       ├── .terraform
+│       │   └── providers
+│       │       └── registry.opentofu.org
+│       │           └── hashicorp
+│       │               └── azurerm
+│       │                   └── 4.32.0
+│       │                       └── linux_amd64
+│       │                           ├── CHANGELOG-v0.md
+│       │                           ├── CHANGELOG-v1.md
+│       │                           ├── CHANGELOG-v2.md
+│       │                           ├── CHANGELOG-v3.md
+│       │                           ├── CHANGELOG.md
+│       │                           ├── LICENSE
+│       │                           └── README.md
+│       ├── .terraform.lock.hcl
+│       ├── aws
+│       │   ├── .terraform
+│       │   │   └── providers
+│       │   │       └── registry.opentofu.org
+│       │   │           └── hashicorp
+│       │   │               └── aws
+│       │   │                   └── 5.100.0
+│       │   │                       └── linux_amd64
+│       │   │                           ├── CHANGELOG.md
+│       │   │                           ├── LICENSE
+│       │   │                           ├── README.md
+│       │   │                           └── terraform-provider-aws
+│       │   ├── .terraform.lock.hcl
+│       │   ├── function.zip
+│       │   ├── handler
+│       │   │   └── handler.py
+│       │   ├── main.tf
+│       │   ├── outputs.tf
+│       │   ├── terraform.tfstate
+│       │   ├── terraform.tfstate.backup
+│       │   └── variables.tf
+│       └── azure
+│           ├── .terraform
+│           │   └── providers
+│           │       └── registry.opentofu.org
+│           │           └── hashicorp
+│           │               └── azurerm
+│           │                   └── 4.33.0
+│           │                       └── linux_amd64
+│           │                           ├── CHANGELOG-v0.md
+│           │                           ├── CHANGELOG-v1.md
+│           │                           ├── CHANGELOG-v2.md
+│           │                           ├── CHANGELOG-v3.md
+│           │                           ├── CHANGELOG.md
+│           │                           ├── LICENSE
+│           │                           ├── README.md
+│           │                           └── terraform-provider-azurerm
+│           ├── .terraform.lock.hcl
+│           ├── azure.env
+│           ├── main.tf
+│           ├── outputs.tf
+│           ├── terraform.tfstate
+│           ├── terraform.tfstate.backup
+│           └── variables.tf
+└── services
+    ├── ingest
+    │   ├── Dockerfile
+    │   ├── Jenkinsfile
+    │   └── src
+    │       └── main.py
+    ├── notifier
+    │   ├── Dockerfile
+    │   ├── Jenkinsfile
+    │   └── src
+    │       └── main.py
+    └── processor
+        ├── Dockerfile
+        ├── Jenkinsfile
+        └── src
+            └── main.py

@@ -21,3 +21,7 @@ variable "public_key_path" {
 variable "public_ip_name" {
   default = "seismicity-pip"
 }
+
+variable "dns_name_label" {
+  default = "seismicity"
+}
