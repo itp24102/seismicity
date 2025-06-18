@@ -4,28 +4,28 @@ pipeline {
             label 'kaniko'
             defaultContainer 'kaniko'
             yaml """
-apiVersion: v1
-kind: Pod
-metadata:
-  labels:
-    jenkins: kaniko
-spec:
-  containers:
-  - name: kaniko
-    image: gcr.io/kaniko-project/executor:v1.9.1-debug
-    command:
-    - /busybox/sh
-    args:
-    - -c
-    - "sleep 3600"
-    volumeMounts:
-    - name: docker-config
-      mountPath: /kaniko/.docker
-  volumes:
-  - name: docker-config
-    secret:
-      secretName: ghcr-config
-"""
+                apiVersion: v1
+                kind: Pod
+                metadata:
+                  labels:
+                    jenkins: kaniko
+                spec:
+                  containers:
+                  - name: kaniko
+                    image: gcr.io/kaniko-project/executor:v1.9.1-debug
+                    command:
+                    - /busybox/sh
+                    args:
+                    - -c
+                    - "sleep 3600"
+                    volumeMounts:
+                    - name: docker-config
+                      mountPath: /kaniko/.docker
+                  volumes:
+                  - name: docker-config
+                    secret:
+                      secretName: ghcr-config
+            """
         }
     }
 
