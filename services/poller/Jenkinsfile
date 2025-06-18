@@ -3,6 +3,22 @@ pipeline {
         kubernetes {
             label 'docker-agent'
             defaultContainer 'jnlp'
+            yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+    - name: jnlp
+      image: ghcr.io/itp24102/jenkins-docker-agent:latest
+      tty: true
+      volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+  volumes:
+    - name: docker-sock
+      hostPath:
+        path: /var/run/docker.sock
+"""
         }
     }
 
