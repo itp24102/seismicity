@@ -12,12 +12,12 @@ metadata:
 spec:
   containers:
   - name: kaniko
-    image: gcr.io/kaniko-project/executor:latest
+    image: gcr.io/kaniko-project/executor:v1.9.1-debug
+    command:
+    - /busybox/sh
     args:
-    - --dockerfile=/workspace/services/poller/Dockerfile
-    - --context=dir:///workspace/services/poller
-    - --destination=ghcr.io/itp24102/poller:latest
-    - --verbosity=info
+    - -c
+    - "sleep 3600"
     volumeMounts:
     - name: docker-config
       mountPath: /kaniko/.docker
