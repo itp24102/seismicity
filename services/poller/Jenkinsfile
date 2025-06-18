@@ -1,32 +1,31 @@
 pipeline {
     agent {
         kubernetes {
-            label 'kaniko'
-            defaultContainer 'kaniko'
+            label 'docker-agent'
+            defaultContainer 'jnlp'
             yaml """
-                apiVersion: v1
-                kind: Pod
-                metadata:
-                  labels:
-                    jenkins: kaniko
-                spec:
-                  containers:
-                  - name: kaniko
-                    image: gcr.io/kaniko-project/executor:v1.9.1-debug
-                    command:
-                    - /busybox/sh
-                    args:
-                    - -c
-                    - "sleep 3600"
-                    volumeMounts:
-                    - name: docker-config
-                      mountPath: /kaniko/.docker
-                  volumes:
-                  - name: docker-config
-                    secret:
-                      secretName: ghcr-config
-            """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: jnlp
+    image: ghcr.io/itp24102/jenkins-docker-agent:latest
+    tty: true
+    volumeMounts:
+    - name: docker-sock
+      mountPath: /var/run/docker.sock
+  volumes:
+  - name: docker-sock
+    hostPath:
+      path: /var/run/docker.sock
+      type: Socket
+"""
         }
+    }
+
+    environment {
+        IMAGE = "ghcr.io/itp24102/poller:latest"
+        CONTEXT = "services/poller"
     }
 
     stages {
@@ -36,11 +35,23 @@ pipeline {
             }
         }
 
+        stage('Build & Push') {
+            steps {
+                withCredentials([string(credentialsId: 'ghcr-pat', variable: 'GHCR_TOKEN')]) {
+                    sh """
+                        docker build -t \$IMAGE \$CONTEXT
+                        echo \$GHCR_TOKEN | docker login ghcr.io -u itp24102 --password-stdin
+                        docker push \$IMAGE
+                    """
+                }
+            }
+        }
+
         stage('Trigger ArgoCD') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'argocd-cli', usernameVariable: 'ARGO_USER', passwordVariable: 'ARGO_PASS')]) {
                     sh "argocd login \$ARGO_SERVER --username \$ARGO_USER --password \$ARGO_PASS --insecure"
-                    sh "argocd app sync seismicity-app"
+                    sh 'argocd app sync seismicity-app'
                 }
             }
         }
