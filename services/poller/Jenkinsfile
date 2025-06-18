@@ -1,66 +1,70 @@
 pipeline {
-  agent {
-    kubernetes {
-      label 'kaniko-agent'
-      defaultContainer 'kaniko'
-      yaml """
+    agent {
+        kubernetes {
+            label 'kaniko'
+            defaultContainer 'kaniko'
+            yaml """
 apiVersion: v1
 kind: Pod
+metadata:
+  labels:
+    jenkins: kaniko
 spec:
   containers:
-    - name: kaniko
-      image: gcr.io/kaniko-project/executor:latest
-      command:
-        - /busybox/cat
-      args:
-        - /dev/null
-      volumeMounts:
-        - name: docker-config
-          mountPath: /kaniko/.docker
-  volumes:
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:latest
+    command:
+    - /kaniko/executor
+    args:
+    - --help
+    tty: true
+    volumeMounts:
     - name: docker-config
-      secret:
-        secretName: ghcr-config
+      mountPath: /kaniko/.docker
+  volumes:
+  - name: docker-config
+    secret:
+      secretName: ghcr-config
 """
-    }
-  }
-
-  environment {
-    IMAGE = "ghcr.io/itp24102/poller:latest"
-    CONTEXT = "/workspace/services/poller"
-    DOCKERFILE = "/workspace/services/poller/Dockerfile"
-  }
-
-  stages {
-    stage('Checkout') {
-      steps {
-        container('kaniko') {
-          checkout scm
         }
-      }
     }
 
-    stage('Build & Push') {
-      steps {
-        container('kaniko') {
-          sh """
-            /kaniko/executor \
-              --context=${CONTEXT} \
-              --dockerfile=${DOCKERFILE} \
-              --destination=${IMAGE} \
-              --verbosity=info
-          """
-        }
-      }
+    environment {
+        IMAGE = "ghcr.io/itp24102/poller:latest"
+        CONTEXT = "/workspace/services/poller"
+        DOCKERFILE = "/workspace/services/poller/Dockerfile"
     }
 
-    stage('Trigger ArgoCD') {
-      steps {
-        withCredentials([usernamePassword(credentialsId: 'argocd-cli', usernameVariable: 'ARGO_USER', passwordVariable: 'ARGO_PASS')]) {
-          sh "argocd login \$ARGO_SERVER --username \$ARGO_USER --password \$ARGO_PASS --insecure"
-          sh 'argocd app sync seismicity-app'
+    stages {
+        stage('Checkout') {
+            steps {
+                container('kaniko') {
+                    checkout scm
+                }
+            }
         }
-      }
+
+        stage('Build & Push') {
+            steps {
+                container('kaniko') {
+                    sh """
+                        /kaniko/executor \
+                          --context=${CONTEXT} \
+                          --dockerfile=${DOCKERFILE} \
+                          --destination=${IMAGE} \
+                          --verbosity=info
+                    """
+                }
+            }
+        }
+
+        stage('Trigger ArgoCD') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'argocd-cli', usernameVariable: 'ARGO_USER', passwordVariable: 'ARGO_PASS')]) {
+                    sh "argocd login \$ARGO_SERVER --username \$ARGO_USER --password \$ARGO_PASS --insecure"
+                    sh 'argocd app sync seismicity-app'
+                }
+            }
+        }
     }
-  }
 }
