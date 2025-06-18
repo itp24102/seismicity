@@ -1,44 +1,44 @@
 pipeline {
-    agent any
+    agent {
+        kubernetes {
+            label 'kaniko'
+            defaultContainer 'kaniko'
+        }
+    }
 
     environment {
         IMAGE = "ghcr.io/itp24102/poller:latest"
-        GITHUB_USER = "itp24102"
+        CONTEXT = "/workspace/services/poller"
+        DOCKERFILE = "/workspace/services/poller/Dockerfile"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
-            }
-        }
-
-        stage('Build') {
-            steps {
-                dir('services/poller') {
-                    sh 'docker build -t $IMAGE .'
+                container('kaniko') {
+                    checkout scm
                 }
             }
         }
 
-        stage('Login to GHCR') {
+        stage('Build & Push') {
             steps {
-                withCredentials([string(credentialsId: 'ghcr-pat', variable: 'GITHUB_TOKEN')]) {
-                    sh 'echo $GITHUB_TOKEN | docker login ghcr.io -u $GITHUB_USER --password-stdin'
+                container('kaniko') {
+                    sh """
+                        /kaniko/executor \
+                          --context=${CONTEXT} \
+                          --dockerfile=${DOCKERFILE} \
+                          --destination=${IMAGE} \
+                          --verbosity=info
+                    """
                 }
-            }
-        }
-
-        stage('Push') {
-            steps {
-                sh 'docker push $IMAGE'
             }
         }
 
         stage('Trigger ArgoCD') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'argocd-cli', usernameVariable: 'ARGO_USER', passwordVariable: 'ARGO_PASS')]) {
-                    sh 'argocd login $ARGO_SERVER --username $ARGO_USER --password $ARGO_PASS --insecure'
+                    sh "argocd login \$ARGO_SERVER --username \$ARGO_USER --password \$ARGO_PASS --insecure"
                     sh 'argocd app sync seismicity-app'
                 }
             }
