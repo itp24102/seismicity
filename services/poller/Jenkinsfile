@@ -11,6 +11,8 @@ spec:
     - name: jnlp
       image: ghcr.io/itp24102/jenkins-docker-agent:latest
       tty: true
+      securityContext:
+        privileged: true
       volumeMounts:
         - name: docker-sock
           mountPath: /var/run/docker.sock
