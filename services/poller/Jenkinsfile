@@ -10,7 +10,10 @@ spec:
   containers:
     - name: kaniko
       image: gcr.io/kaniko-project/executor:latest
-      args: ["--dockerfile=Dockerfile"]
+      command:
+        - sleep
+      args:
+        - infinity
       volumeMounts:
         - name: docker-config
           mountPath: /kaniko/.docker
