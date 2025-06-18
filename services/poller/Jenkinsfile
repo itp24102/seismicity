@@ -4,24 +4,42 @@ pipeline {
     environment {
         IMAGE = "ghcr.io/itp24102/poller:latest"
         GITHUB_USER = "itp24102"
-        GITHUB_PAT = credentials('ghcr-pat')
     }
 
     stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
         stage('Build') {
             steps {
-                script {
-                    docker.build("${IMAGE}", "--file services/poller/Dockerfile services/poller")
+                dir('services/poller') {
+                    sh 'docker build -t $IMAGE .'
+                }
+            }
+        }
+
+        stage('Login to GHCR') {
+            steps {
+                withCredentials([string(credentialsId: 'ghcr-pat', variable: 'GITHUB_TOKEN')]) {
+                    sh 'echo $GITHUB_TOKEN | docker login ghcr.io -u $GITHUB_USER --password-stdin'
                 }
             }
         }
 
         stage('Push') {
             steps {
-                script {
-                    docker.withRegistry('https://ghcr.io', 'ghcr-pat') {
-                        docker.image("${IMAGE}").push()
-                    }
+                sh 'docker push $IMAGE'
+            }
+        }
+
+        stage('Trigger ArgoCD') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'argocd-cli', usernameVariable: 'ARGO_USER', passwordVariable: 'ARGO_PASS')]) {
+                    sh 'argocd login $ARGO_SERVER --username $ARGO_USER --password $ARGO_PASS --insecure'
+                    sh 'argocd app sync seismicity-app'
                 }
             }
         }
