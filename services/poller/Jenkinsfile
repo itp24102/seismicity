@@ -13,11 +13,11 @@ spec:
   containers:
   - name: kaniko
     image: gcr.io/kaniko-project/executor:latest
-    command:
-    - sleep
     args:
-    - infinity
-    tty: true
+    - --dockerfile=/workspace/services/poller/Dockerfile
+    - --context=dir:///workspace/services/poller
+    - --destination=ghcr.io/itp24102/poller:latest
+    - --verbosity=info
     volumeMounts:
     - name: docker-config
       mountPath: /kaniko/.docker
@@ -29,32 +29,10 @@ spec:
         }
     }
 
-    environment {
-        IMAGE = "ghcr.io/itp24102/poller:latest"
-        CONTEXT = "/workspace/services/poller"
-        DOCKERFILE = "/workspace/services/poller/Dockerfile"
-    }
-
     stages {
         stage('Checkout') {
             steps {
-                container('kaniko') {
-                    checkout scm
-                }
-            }
-        }
-
-        stage('Build & Push') {
-            steps {
-                container('kaniko') {
-                    sh """
-                        /kaniko/executor \
-                          --context=${CONTEXT} \
-                          --dockerfile=${DOCKERFILE} \
-                          --destination=${IMAGE} \
-                          --verbosity=info
-                    """
-                }
+                checkout scm
             }
         }
 
@@ -62,7 +40,7 @@ spec:
             steps {
                 withCredentials([usernamePassword(credentialsId: 'argocd-cli', usernameVariable: 'ARGO_USER', passwordVariable: 'ARGO_PASS')]) {
                     sh "argocd login \$ARGO_SERVER --username \$ARGO_USER --password \$ARGO_PASS --insecure"
-                    sh 'argocd app sync seismicity-app'
+                    sh "argocd app sync seismicity-app"
                 }
             }
         }
