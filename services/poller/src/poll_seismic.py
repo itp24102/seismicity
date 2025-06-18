@@ -1,25 +1,25 @@
 import os
 import time
-import json
-import boto3
 import requests
-import xml.etree.ElementTree as ET
+import boto3
+import json
 from datetime import datetime
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeopyError
+import xml.etree.ElementTree as ET
 
 # === Περιβάλλον ===
 URL = "http://www.geophysics.geol.uoa.gr/stations/maps/seismicity.xml"
 S3_BUCKET = os.environ.get("S3_BUCKET", "seismicity-app-bucket")
 S3_KEY_PREFIX = os.environ.get("S3_KEY_PREFIX", "events/")
 AWS_REGION = os.environ.get("AWS_REGION", "eu-west-1")
-POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "60"))
-
-# === S3 ===
-s3 = boto3.client("s3", region_name=AWS_REGION)
+POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "10"))
 
 # === Geolocator ===
 geolocator = Nominatim(user_agent="seismicity-poller")
+
+# === S3 Client ===
+s3 = boto3.client("s3", region_name=AWS_REGION)
 
 def reverse_geocode(lat, lon):
     try:
@@ -29,98 +29,90 @@ def reverse_geocode(lat, lon):
         print(f"⚠️ Geocoding failed for ({lat}, {lon}): {e}")
         return "Άγνωστη"
 
+def parse_description(desc):
+    try:
+        parts = desc.split("<br>")
+        location = parts[0].strip()
+        date_str = parts[1].split(":")[1].strip().split()[0]
+        time_str = parts[1].split(":")[2].strip().split()[0]
+        lat = parts[2].split(":")[1].strip().replace("N", "")
+        lon = parts[3].split(":")[1].strip().replace("E", "")
+        depth = parts[4].split(":")[1].strip().replace("km", "")
+        mag = parts[5].split(":")[1].strip().replace("M", "").strip()
+
+        return {
+            "location": location,
+            "date": f"2025-{date_str}",
+            "time": time_str,
+            "lat": lat,
+            "lon": lon,
+            "depth": depth,
+            "mag": mag
+        }
+    except Exception as e:
+        print(f"❌ Failed to parse description: {desc} — {e}")
+        return None
+
 def fetch_xml():
-    print(f"📥 Fetching XML from {URL}")
+    print(f"📥 Fetching data from {URL}")
     response = requests.get(URL, timeout=10)
     response.raise_for_status()
     return ET.fromstring(response.content)
 
-def extract_data(item):
-    try:
-        title = item.findtext("title", "")
-        description = item.findtext("description", "").replace("&lt;br&gt;", "\n")
-        pub_date = item.findtext("pubDate", "")
-        guid = item.findtext("guid", "")
-
-        # Title: M 1.2, 18/06 - 22:30:12 UTC, Some Location
-        parts = title.split(",")
-        magnitude = parts[0].replace("M", "").strip()
-        dt_str = parts[1].split("UTC")[0].strip()
-        dt_iso = datetime.strptime(f"2025-{dt_str}", "%Y-%d/%m - %H:%M:%S").isoformat()
-
-        lines = description.splitlines()
-        location = lines[0].strip()
-        lat = lines[1].split(":")[1].strip().replace("N", "")
-        lon = lines[2].split(":")[1].strip().replace("E", "")
-        depth = lines[3].split(":")[1].strip().replace("km", "")
-
-        city = reverse_geocode(lat, lon)
-
-        return {
-            "guid": guid,
-            "timestamp": dt_iso,
-            "magnitude": magnitude,
-            "lat": lat,
-            "lon": lon,
-            "depth": depth,
-            "location": location,
-            "city": city,
-        }
-    except Exception as e:
-        print(f"⚠️ Failed to parse item: {e}")
-        return None
-
-def load_existing_guids(s3_key):
-    try:
-        obj = s3.get_object(Bucket=S3_BUCKET, Key=s3_key)
-        events = json.loads(obj["Body"].read().decode("utf-8"))
-        return set(event.get("guid") for event in events)
-    except s3.exceptions.NoSuchKey:
-        return set()
-    except Exception as e:
-        print(f"❌ Failed to load existing data from {s3_key}: {e}")
-        return set()
-
-def save_events(events, s3_key):
-    try:
-        s3.put_object(
-            Bucket=S3_BUCKET,
-            Key=s3_key,
-            Body=json.dumps(events, ensure_ascii=False, indent=2).encode("utf-8"),
-            ContentType="application/json"
-        )
-        print(f"✅ Updated S3: {s3_key} with {len(events)} events")
-    except Exception as e:
-        print(f"❌ Failed to upload to S3: {e}")
-
 def parse_and_upload(xml_root):
-    items = xml_root.findall(".//item")
-    new_events = []
     today = datetime.utcnow().strftime("%Y-%m-%d")
     s3_key = f"{S3_KEY_PREFIX}{today}.json"
-    existing_guids = load_existing_guids(s3_key)
+    local_tmp_file = f"/tmp/events_{today}.json"
+    daily_events = []
 
-    for item in items:
-        event = extract_data(item)
-        if not event or event["guid"] in existing_guids:
+    # Αν υπάρχει τοπικό αρχείο (σε pod), το φορτώνουμε για να αποφύγουμε διπλοεγγραφές
+    if os.path.exists(local_tmp_file):
+        with open(local_tmp_file, "r", encoding="utf-8") as f:
+            daily_events = json.load(f)
+
+    known_keys = {f"{e['date']}T{e['time']}" for e in daily_events}
+
+    for item in xml_root.findall(".//item"):
+        desc = item.findtext("description")
+        parsed = parse_description(desc)
+        if not parsed:
             continue
-        new_events.append(event)
 
-    if new_events:
-        print(f"📦 Found {len(new_events)} new events")
-        combined_events = list(existing_guids) + new_events
-        save_events(new_events + list(existing_guids), s3_key)
+        timestamp = f"{parsed['date']}T{parsed['time']}"
+        if timestamp in known_keys:
+            print(f"⚠️ Skipped duplicate or old event: {timestamp}")
+            continue
+
+        parsed["city"] = reverse_geocode(parsed["lat"], parsed["lon"])
+        daily_events.append(parsed)
+        known_keys.add(timestamp)
+        print(f"📦 Appending new event to {local_tmp_file}: {timestamp} | {parsed['city']}")
+
+    if daily_events:
+        with open(local_tmp_file, "w", encoding="utf-8") as f:
+            json.dump(daily_events, f, ensure_ascii=False, indent=2)
+
+        try:
+            s3.put_object(
+                Bucket=S3_BUCKET,
+                Key=s3_key,
+                Body=json.dumps(daily_events, ensure_ascii=False).encode("utf-8"),
+                ContentType="application/json"
+            )
+            print(f"✅ Uploaded to S3: {s3_key} ({len(daily_events)} events)")
+        except Exception as e:
+            print(f"❌ S3 upload failed: {e}")
     else:
-        print("ℹ️ No new events found")
+        print("ℹ️ No new events to upload.")
 
 def main():
-    xml_root = fetch_xml()
-    parse_and_upload(xml_root)
+    root = fetch_xml()
+    parse_and_upload(root)
 
 if __name__ == "__main__":
     while True:
-        print(f"\n🔁 Polling at {datetime.utcnow().isoformat()}Z")
         try:
+            print(f"\n🔁 Polling at {datetime.utcnow().isoformat()}Z")
             main()
         except Exception as e:
             print(f"❌ Σφάλμα: {e}")
