@@ -9,7 +9,8 @@
     src: influxdb-compose.yml.j2
     dest: /opt/influxdb/docker-compose.yml
 
-- name: Εκκίνηση InfluxDB με Docker Compose
-  community.docker.docker_compose:
+- name: Εκκίνηση InfluxDB με Docker Compose (v2)
+  community.docker.docker_compose_v2:
     project_src: /opt/influxdb
     state: present
+

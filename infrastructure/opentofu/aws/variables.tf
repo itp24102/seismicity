@@ -9,7 +9,7 @@ variable "s3_bucket_name" {
 }
 
 variable "influx_url" {
-  description = "URL για το InfluxDB endpoint"
+  description = "http://seismicity.westeurope.cloudapp.azure.com:8086"
   type        = string
 }
 

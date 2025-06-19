@@ -1,6 +1,7 @@
 - name: Deploy services to microk8s
   hosts: servers
   gather_facts: no
+  become: true
   roles:
     # - jenkins
     # - prometheus
