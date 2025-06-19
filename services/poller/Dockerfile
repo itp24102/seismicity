@@ -10,4 +10,4 @@ RUN pip install feedparser geopy boto3 requests
 COPY src/poll_seismic.py .
 
 # Εκκίνηση
-CMD ["python", "poll_seismic.py"]
+CMD ["python3", "poll_seismic.py"]
