@@ -1,0 +1,30 @@
+pipeline {
+  agent any
+  environment {
+    FUNCTION_NAME = 'influx-writer'
+  }
+  stages {
+    stage('Prepare') {
+      steps {
+        sh 'rm -rf build influx_writer.zip'
+        sh 'mkdir -p build'
+        sh 'pip install -r requirements.txt -t build/'
+        sh 'cp influx_writer.py build/'
+      }
+    }
+    stage('Package') {
+      steps {
+        dir('build') {
+          sh 'zip -r ../influx_writer.zip .'
+        }
+      }
+    }
+    stage('Deploy to AWS') {
+      steps {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
+          sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://influx_writer.zip'
+        }
+      }
+    }
+  }
+}

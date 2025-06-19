@@ -1,0 +1,30 @@
+pipeline {
+  agent any
+  environment {
+    FUNCTION_NAME = 'seismicity-function'
+  }
+  stages {
+    stage('Prepare') {
+      steps {
+        sh 'rm -rf build function.zip'
+        sh 'mkdir -p build'
+        sh 'pip install -r requirements.txt -t build/'
+        sh 'cp handler.py build/'
+      }
+    }
+    stage('Package') {
+      steps {
+        dir('build') {
+          sh 'zip -r ../function.zip .'
+        }
+      }
+    }
+    stage('Deploy to AWS') {
+      steps {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
+          sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://function.zip'
+        }
+      }
+    }
+  }
+}
