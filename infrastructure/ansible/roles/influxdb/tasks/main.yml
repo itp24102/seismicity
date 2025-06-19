@@ -1,0 +1,15 @@
+- name: Δημιουργία φακέλου για InfluxDB
+  file:
+    path: /opt/influxdb
+    state: directory
+    mode: '0755'
+
+- name: Αντιγραφή docker-compose.yml για InfluxDB
+  template:
+    src: influxdb-compose.yml.j2
+    dest: /opt/influxdb/docker-compose.yml
+
+- name: Εκκίνηση InfluxDB με Docker Compose
+  community.docker.docker_compose:
+    project_src: /opt/influxdb
+    state: present

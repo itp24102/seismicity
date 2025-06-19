@@ -1,0 +1,5 @@
+influxdb_username: admin
+influxdb_password: changeme
+influxdb_org: seismicity
+influxdb_bucket: seismicity
+influxdb_token: seismicity-token
