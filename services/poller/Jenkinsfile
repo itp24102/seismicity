@@ -38,7 +38,7 @@ pipeline {
       steps {
         dir('services/poller') {
           withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-            sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://function.zip'
+            sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://function.zip --region eu-west-1'
           }
         }
       }

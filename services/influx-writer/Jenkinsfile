@@ -38,7 +38,7 @@ pipeline {
       steps {
         dir('services/influx-writer') {
           withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-            sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://influx_writer.zip'
+            sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://influx_writer.zip --region eu-west-1'
           }
         }
       }
