@@ -1,4 +1,3 @@
-# handler.py
 import os
 import requests
 import json
@@ -25,12 +24,11 @@ def reverse_geocode(lat, lon):
 def fetch_events_from_seismicportal(limit=20):
     url = (
         "https://www.seismicportal.eu/fdsnws/event/1/query"
-        "?format=json&limit={limit}&orderby=time-asc"
+        "?format=json&limit=20&orderby=time-asc"
         "&minlat=34&maxlat=42&minlon=19&maxlon=30"
-    ).format(limit=limit)
+    )
     print(f"🔗 Querying SeismicPortal: {url}")
-
-    response = requests.get(url, timeout=10)
+    response = requests.get(url, timeout=15)
     response.raise_for_status()
     data = response.json()
 
@@ -41,8 +39,8 @@ def fetch_events_from_seismicportal(limit=20):
             props = feature["properties"]
             coords = feature["geometry"]["coordinates"]
 
-            timestamp = props["time"]
-            magnitude = props["mag"]
+            timestamp = props.get("time")
+            magnitude = props.get("mag")
             depth = coords[2]
             lon, lat = coords[0], coords[1]
 
