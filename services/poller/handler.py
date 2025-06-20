@@ -12,6 +12,7 @@ S3_KEY_PREFIX = os.environ.get("S3_KEY_PREFIX", "events/")
 AWS_REGION = os.environ.get("AWS_REGION", "eu-central-1")
 
 s3_client = boto3.client("s3", region_name=AWS_REGION)
+lambda_client = boto3.client("lambda", region_name=AWS_REGION)
 geolocator = Nominatim(user_agent="seismicity-lambda")
 
 def reverse_geocode(lat, lon):
@@ -22,20 +23,25 @@ def reverse_geocode(lat, lon):
         return "Timeout"
 
 def fetch_events_from_seismicportal(limit=20):
-    url = f"https://www.seismicportal.eu/fdsnws/event/1/query?format=json&limit={limit}&orderby=time-asc&minlat=34&maxlat=42&minlon=19&maxlon=30"
+    url = (
+        "https://www.seismicportal.eu/fdsnws/event/1/query"
+        "?format=json&limit={limit}&orderby=time-asc"
+        "&minlat=34&maxlat=42&minlon=19&maxlon=30"
+    ).format(limit=limit)
     print(f"🔗 Querying SeismicPortal: {url}")
-    response = requests.get(url, timeout=15)
+
+    response = requests.get(url, timeout=10)
     response.raise_for_status()
     data = response.json()
 
     events = []
-    for feature in data["features"]:
+    for feature in data.get("features", []):
         try:
             event_id = feature["id"]
             props = feature["properties"]
             coords = feature["geometry"]["coordinates"]
 
-            timestamp = str(props.get("time", ""))
+            timestamp = props["time"]
             magnitude = props["mag"]
             depth = coords[2]
             lon, lat = coords[0], coords[1]
@@ -93,12 +99,15 @@ def handler(event, context):
         new_events = parse_and_upload(events)
 
         if new_events:
-            lambda_client = boto3.client("lambda")
+            print(f"🚀 Προώθηση {len(new_events)} νέων σεισμικών δεδομένων στο influx-writer")
             lambda_client.invoke(
                 FunctionName="influx-writer",
                 InvocationType="Event",
                 Payload=json.dumps({"events": new_events}).encode("utf-8")
             )
+        else:
+            print("ℹ️ Δεν υπάρχουν νέα δεδομένα προς αποστολή στο influx-writer.")
     except Exception as e:
         print(f"❌ Σφάλμα: {e}")
+
     return {"statusCode": 200, "body": "Poll from SeismicPortal completed."}
