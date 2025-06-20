@@ -1,10 +1,5 @@
 pipeline {
-  agent {
-    docker {
-      image 'python:3.10'
-      args '-u root' // για να μπορεί να γράψει σε volume
-    }
-  }
+  agent any
 
   environment {
     FUNCTION_NAME = 'seismicity-function'
@@ -38,11 +33,11 @@ pipeline {
   }
 
   post {
-    success {
-      echo '✅ Lambda deployed successfully.'
-    }
     failure {
-      echo '❌ Lambda deploy failed.'
+      echo "❌ Lambda deploy failed."
+    }
+    success {
+      echo "✅ Lambda deploy succeeded."
     }
   }
 }
