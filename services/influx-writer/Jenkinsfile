@@ -3,6 +3,10 @@ pipeline {
   environment {
     FUNCTION_NAME = 'influx-writer'
   }
+  options {
+  timestamps()
+  buildDiscarder(logRotator(numToKeepStr: '10'))
+}
   stages {
     stage('Prepare') {
       steps {
@@ -26,5 +30,13 @@ pipeline {
         }
       }
     }
+  }
+}
+post {
+  success {
+    echo "✅ Lambda ${FUNCTION_NAME} deployed successfully."
+  }
+  failure {
+    echo "❌ Lambda ${FUNCTION_NAME} deploy failed."
   }
 }
