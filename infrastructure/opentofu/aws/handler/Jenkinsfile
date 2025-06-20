@@ -7,7 +7,7 @@ pipeline {
     BUILD_DIR = 'lambda_build'
     DEPENDENCIES = 'requests geopy boto3 feedparser'
     S3_BUCKET = 'seismicity-app-bucket'
-    AWS_REGION = 'eu-central-1'
+    AWS_REGION = 'eu-west-1'
   }
 
   stages {
