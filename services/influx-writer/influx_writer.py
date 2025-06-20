@@ -23,19 +23,26 @@ def handler(event, context):
     points = []
     for e in events:
         try:
-            time = datetime.fromisoformat(e["timestamp"].replace("Z", ""))
+            timestamp = e.get("timestamp")
+            if not timestamp:
+                print(f"⚠️ Event χωρίς timestamp: {e}")
+                continue
+
+            time = datetime.fromisoformat(timestamp.replace("Z", ""))
+
             point = (
                 Point("earthquake")
                 .tag("location", e.get("location", "Άγνωστη"))
-                .field("magnitude", float(e["magnitude"]))
-                .field("depth", float(e["depth"]))
-                .field("lat", float(e["lat"]))
-                .field("lon", float(e["lon"]))
+                .field("magnitude", float(e.get("magnitude", 0)))
+                .field("depth", float(e.get("depth", 0)))
+                .field("lat", float(e.get("lat", 0)))
+                .field("lon", float(e.get("lon", 0)))
                 .time(time, WritePrecision.NS)
             )
             points.append(point)
         except Exception as ex:
             print(f"❌ Σφάλμα μετατροπής σεισμού: {ex}")
+            print(json.dumps(e, ensure_ascii=False, indent=2))
 
     try:
         write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=points)
