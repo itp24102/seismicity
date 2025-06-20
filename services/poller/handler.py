@@ -1,4 +1,3 @@
-# handler.py
 import os
 import requests
 import json
@@ -9,7 +8,7 @@ from geopy.exc import GeocoderTimedOut
 
 S3_BUCKET = os.environ.get("S3_BUCKET")
 S3_KEY_PREFIX = os.environ.get("S3_KEY_PREFIX", "events/")
-AWS_REGION = os.environ.get("AWS_REGION", "eu-west-1")
+AWS_REGION = os.environ.get("AWS_REGION", "eu-central-1")
 
 s3_client = boto3.client("s3", region_name=AWS_REGION)
 lambda_client = boto3.client("lambda", region_name=AWS_REGION)
@@ -21,33 +20,33 @@ def reverse_geocode(lat, lon):
         return location.address if location else "Άγνωστη τοποθεσία"
     except GeocoderTimedOut:
         return "Timeout"
-    except Exception as e:
-        print(f"⚠️ Reverse geocode error: {e}")
-        return "Σφάλμα"
 
 def fetch_events_from_seismicportal(limit=20):
-    url = f"https://www.seismicportal.eu/fdsnws/event/1/query?format=json&limit={limit}&orderby=time-asc&minlat=34&maxlat=42&minlon=19&maxlon=30"
+    url = (
+        "https://www.seismicportal.eu/fdsnws/event/1/query"
+        "?format=json&limit=20&orderby=time-asc"
+        "&minlat=34&maxlat=42&minlon=19&maxlon=30"
+    )
     print(f"🔗 Querying SeismicPortal: {url}")
     response = requests.get(url, timeout=10)
     response.raise_for_status()
     data = response.json()
 
     events = []
-    for feature in data.get("features", []):
+    for feature in data["features"]:
         try:
             event_id = feature["id"]
             props = feature["properties"]
             coords = feature["geometry"]["coordinates"]
 
             timestamp = props.get("time")
-            if not timestamp:
-                print(f"⚠️ Missing timestamp in event: {event_id}")
+            if not isinstance(timestamp, str):
+                print(f"⚠️ Παράβλεψη event λόγω μη έγκυρου timestamp: {timestamp}")
                 continue
 
-            magnitude = props.get("mag", 0.0)
-            depth = coords[2] if len(coords) > 2 else 0.0
-            lon = coords[0] if len(coords) > 0 else 0.0
-            lat = coords[1] if len(coords) > 1 else 0.0
+            magnitude = props["mag"]
+            depth = coords[2]
+            lon, lat = coords[0], coords[1]
             location = reverse_geocode(lat, lon)
 
             events.append({
@@ -60,14 +59,12 @@ def fetch_events_from_seismicportal(limit=20):
                 "location": location
             })
         except Exception as e:
-            print(f"⚠️ Παράβλεψη event: {e}")
-            print(json.dumps(feature, ensure_ascii=False, indent=2))
-
+            print(f"⚠️ Παράβλεψη event λόγω σφάλματος: {e}")
     return events
 
 def parse_and_upload(events):
     if not events:
-        print("⚠️ Δεν βρέθηκαν νέα συμβάντα.")
+        print("Δεν βρέθηκαν νέα συμβάντα.")
         return []
 
     today = datetime.utcnow().strftime("%Y-%m-%d")
@@ -94,6 +91,10 @@ def parse_and_upload(events):
         ContentType="application/json"
     )
     print(f"✅ Αποθηκεύτηκαν {len(new_events)} νέα συμβάντα στο {key}.")
+
+    print("🧾 Παραδείγματα νέων συμβάντων:")
+    print(json.dumps(new_events, indent=2, ensure_ascii=False)[:1000])
+
     return new_events
 
 def handler(event, context):
@@ -103,12 +104,12 @@ def handler(event, context):
         new_events = parse_and_upload(events)
 
         if new_events:
-            print("📤 Στέλνονται δεδομένα στο influx-writer...")
             lambda_client.invoke(
                 FunctionName="influx-writer",
                 InvocationType="Event",
                 Payload=json.dumps({"events": new_events}).encode("utf-8")
             )
+            print("📤 Αποστολή στο influx-writer έγινε.")
     except Exception as e:
         print(f"❌ Σφάλμα: {e}")
     return {"statusCode": 200, "body": "Poll from SeismicPortal completed."}
