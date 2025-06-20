@@ -25,7 +25,7 @@ def reverse_geocode(lat, lon):
 
 
 def fetch_events_from_seismicportal(limit=20):
-    url = f"https://www.seismicportal.eu/fdsnws/event/1/query?limit={limit}&format=geojson&orderby=time"
+    url = f"https://www.seismicportal.eu/fdsnws/event/1/query?format=json&limit={limit}&orderby=time-asc"
     print(f"🔗 Querying SeismicPortal: {url}")
     response = requests.get(url, timeout=10)
     response.raise_for_status()
