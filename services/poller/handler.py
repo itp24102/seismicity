@@ -1,3 +1,4 @@
+# handler.py
 import os
 import requests
 import json
@@ -11,7 +12,6 @@ S3_KEY_PREFIX = os.environ.get("S3_KEY_PREFIX", "events/")
 AWS_REGION = os.environ.get("AWS_REGION", "eu-central-1")
 
 s3_client = boto3.client("s3", region_name=AWS_REGION)
-lambda_client = boto3.client("lambda", region_name=AWS_REGION)
 geolocator = Nominatim(user_agent="seismicity-lambda")
 
 def reverse_geocode(lat, lon):
@@ -22,13 +22,9 @@ def reverse_geocode(lat, lon):
         return "Timeout"
 
 def fetch_events_from_seismicportal(limit=20):
-    url = (
-        "https://www.seismicportal.eu/fdsnws/event/1/query"
-        "?format=json&limit=20&orderby=time-asc"
-        "&minlat=34&maxlat=42&minlon=19&maxlon=30"
-    )
+    url = f"https://www.seismicportal.eu/fdsnws/event/1/query?format=json&limit={limit}&orderby=time-asc&minlat=34&maxlat=42&minlon=19&maxlon=30"
     print(f"🔗 Querying SeismicPortal: {url}")
-    response = requests.get(url, timeout=10)
+    response = requests.get(url, timeout=15)
     response.raise_for_status()
     data = response.json()
 
@@ -39,14 +35,11 @@ def fetch_events_from_seismicportal(limit=20):
             props = feature["properties"]
             coords = feature["geometry"]["coordinates"]
 
-            timestamp = props.get("time")
-            if not isinstance(timestamp, str):
-                print(f"⚠️ Παράβλεψη event λόγω μη έγκυρου timestamp: {timestamp}")
-                continue
-
+            timestamp = str(props.get("time", ""))
             magnitude = props["mag"]
             depth = coords[2]
             lon, lat = coords[0], coords[1]
+
             location = reverse_geocode(lat, lon)
 
             events.append({
@@ -91,10 +84,6 @@ def parse_and_upload(events):
         ContentType="application/json"
     )
     print(f"✅ Αποθηκεύτηκαν {len(new_events)} νέα συμβάντα στο {key}.")
-
-    print("🧾 Παραδείγματα νέων συμβάντων:")
-    print(json.dumps(new_events, indent=2, ensure_ascii=False)[:1000])
-
     return new_events
 
 def handler(event, context):
@@ -104,12 +93,12 @@ def handler(event, context):
         new_events = parse_and_upload(events)
 
         if new_events:
+            lambda_client = boto3.client("lambda")
             lambda_client.invoke(
                 FunctionName="influx-writer",
                 InvocationType="Event",
                 Payload=json.dumps({"events": new_events}).encode("utf-8")
             )
-            print("📤 Αποστολή στο influx-writer έγινε.")
     except Exception as e:
         print(f"❌ Σφάλμα: {e}")
     return {"statusCode": 200, "body": "Poll from SeismicPortal completed."}
