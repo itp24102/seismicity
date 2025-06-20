@@ -12,7 +12,9 @@ S3_KEY_PREFIX = os.environ.get("S3_KEY_PREFIX", "events/")
 AWS_REGION = os.environ.get("AWS_REGION", "eu-central-1")
 
 s3_client = boto3.client("s3", region_name=AWS_REGION)
+lambda_client = boto3.client("lambda", region_name=AWS_REGION)
 geolocator = Nominatim(user_agent="seismicity-lambda")
+
 
 def reverse_geocode(lat, lon):
     try:
@@ -20,6 +22,7 @@ def reverse_geocode(lat, lon):
         return location.address if location else "Άγνωστη τοποθεσία"
     except GeocoderTimedOut:
         return "Timeout"
+
 
 def fetch_events_from_seismicportal(limit=20):
     url = f"https://www.seismicportal.eu/fdsnws/event/1/query?limit={limit}&format=geojson"
@@ -54,6 +57,7 @@ def fetch_events_from_seismicportal(limit=20):
             print(f"⚠️ Παράβλεψη event λόγω σφάλματος: {e}")
     return events
 
+
 def parse_and_upload(events):
     if not events:
         print("Δεν βρέθηκαν νέα συμβάντα.")
@@ -84,6 +88,18 @@ def parse_and_upload(events):
     )
     print(f"✅ Αποθηκεύτηκαν {len(new_events)} νέα συμβάντα στο {key}.")
 
+    # ✅ Εδώ κάνουμε invoke τη δεύτερη Lambda:
+    try:
+        lambda_client.invoke(
+            FunctionName="influx-writer",
+            InvocationType="Event",
+            Payload=json.dumps({"events": new_events}).encode("utf-8")
+        )
+        print("📤 Τα δεδομένα προωθήθηκαν στο influx-writer.")
+    except Exception as ex:
+        print(f"❌ Σφάλμα στην invoke του influx-writer: {ex}")
+
+
 def handler(event, context):
     print(f"🌍 Polling από SeismicPortal: {datetime.utcnow().isoformat()}Z")
     try:
@@ -92,11 +108,3 @@ def handler(event, context):
     except Exception as e:
         print(f"❌ Σφάλμα: {e}")
     return {"statusCode": 200, "body": "Poll from SeismicPortal completed."}
-
-lambda_client = boto3.client("lambda")
-
-lambda_client.invoke(
-    FunctionName="influx-writer",
-    InvocationType="Event",
-    Payload=json.dumps({"events": new_events}).encode("utf-8")
-)
