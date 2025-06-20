@@ -33,9 +33,9 @@ pipeline {
 }
 post {
   success {
-    echo "✅ Lambda ${FUNCTION_NAME} deployed successfully."
+    echo "✅ Lambda deployed successfully."
   }
   failure {
-    echo "❌ Lambda ${FUNCTION_NAME} deploy failed."
+    echo "❌ Lambda deploy failed."
   }
 }

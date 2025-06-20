@@ -31,11 +31,10 @@ pipeline {
     }
   }
   post {
-    success {
-      echo "✅ Lambda ${FUNCTION_NAME} deployed successfully."
-    }
-    failure {
-      echo "❌ Lambda ${FUNCTION_NAME} deploy failed."
-    }
+  success {
+    echo "✅ Lambda deployed successfully."
+  }
+  failure {
+    echo "❌ Lambda deploy failed."
   }
 }
