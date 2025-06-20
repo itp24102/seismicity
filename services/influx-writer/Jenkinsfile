@@ -1,23 +1,34 @@
 pipeline {
   agent any
-
   environment {
     FUNCTION_NAME = 'influx-writer'
   }
-
+  options {
+    skipDefaultCheckout()
+  }
   stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
     stage('Prepare') {
       steps {
-        sh 'rm -rf build influx_writer.zip'
-        sh 'mkdir -p build'
-        sh 'pip install -r requirements.txt -t build/'
-        sh 'cp influx_writer.py build/'
+        dir('services/influx-writer') {
+          sh '''
+            rm -rf build influx_writer.zip
+            mkdir -p build
+            pip install --break-system-packages -r requirements.txt -t build/
+            cp influx_writer.py build/
+          '''
+        }
       }
     }
 
     stage('Package') {
       steps {
-        dir('build') {
+        dir('services/influx-writer/build') {
           sh 'zip -r ../influx_writer.zip .'
         }
       }
@@ -25,19 +36,21 @@ pipeline {
 
     stage('Deploy to AWS') {
       steps {
-        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-          sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://influx_writer.zip'
+        dir('services/influx-writer') {
+          withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
+            sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://influx_writer.zip'
+          }
         }
       }
     }
   }
 
   post {
-    success {
-      echo '✅ Lambda influx-writer deployed successfully.'
-    }
     failure {
-      echo '❌ Lambda influx-writer deploy failed.'
+      echo "❌ Lambda deploy failed."
+    }
+    success {
+      echo "✅ Lambda deploy completed successfully."
     }
   }
 }

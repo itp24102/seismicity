@@ -1,23 +1,34 @@
 pipeline {
   agent any
-
   environment {
     FUNCTION_NAME = 'seismicity-function'
   }
-
+  options {
+    skipDefaultCheckout()
+  }
   stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
     stage('Prepare') {
       steps {
-        sh 'rm -rf build function.zip'
-        sh 'mkdir -p build'
-        sh 'pip install -r requirements.txt -t build/'
-        sh 'cp handler.py build/'
+        dir('services/poller') {
+          sh '''
+            rm -rf build function.zip
+            mkdir -p build
+            pip install --break-system-packages -r requirements.txt -t build/
+            cp handler.py build/
+          '''
+        }
       }
     }
 
     stage('Package') {
       steps {
-        dir('build') {
+        dir('services/poller/build') {
           sh 'zip -r ../function.zip .'
         }
       }
@@ -25,8 +36,10 @@ pipeline {
 
     stage('Deploy to AWS') {
       steps {
-        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-          sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://function.zip'
+        dir('services/poller') {
+          withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
+            sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://function.zip'
+          }
         }
       }
     }
@@ -37,7 +50,7 @@ pipeline {
       echo "❌ Lambda deploy failed."
     }
     success {
-      echo "✅ Lambda deploy succeeded."
+      echo "✅ Lambda deploy completed successfully."
     }
   }
 }
