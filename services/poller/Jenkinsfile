@@ -1,5 +1,11 @@
 pipeline {
-  agent any
+  agent {
+    docker {
+      image 'python:3.10'
+      args '-u root' // για να μπορεί να γράψει σε volume
+    }
+  }
+
   environment {
     FUNCTION_NAME = 'seismicity-function'
   }

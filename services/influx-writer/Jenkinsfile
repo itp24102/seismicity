@@ -1,11 +1,15 @@
 pipeline {
-  agent any
+  agent {
+    docker {
+      image 'python:3.10'
+      args '-u root'
+    }
+  }
+
   environment {
     FUNCTION_NAME = 'influx-writer'
   }
-  options {
-  buildDiscarder(logRotator(numToKeepStr: '10'))
-}
+
   stages {
     stage('Prepare') {
       steps {
@@ -15,6 +19,7 @@ pipeline {
         sh 'cp influx_writer.py build/'
       }
     }
+
     stage('Package') {
       steps {
         dir('build') {
@@ -22,6 +27,7 @@ pipeline {
         }
       }
     }
+
     stage('Deploy to AWS') {
       steps {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
@@ -33,10 +39,10 @@ pipeline {
 
   post {
     success {
-      echo '✅ Lambda deployed successfully.'
+      echo '✅ Lambda influx-writer deployed successfully.'
     }
     failure {
-      echo '❌ Lambda deploy failed.'
+      echo '❌ Lambda influx-writer deploy failed.'
     }
   }
 }
