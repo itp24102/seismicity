@@ -30,12 +30,13 @@ pipeline {
       }
     }
   }
-}
-post {
-  success {
-    echo "✅ Lambda deployed successfully."
-  }
-  failure {
-    echo "❌ Lambda deploy failed."
+
+  post {
+    success {
+      echo '✅ Lambda deployed successfully.'
+    }
+    failure {
+      echo '❌ Lambda deploy failed.'
+    }
   }
 }

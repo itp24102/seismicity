@@ -3,9 +3,7 @@ pipeline {
   environment {
     FUNCTION_NAME = 'seismicity-function'
   }
-  options {
-  buildDiscarder(logRotator(numToKeepStr: '10'))
-}
+
   stages {
     stage('Prepare') {
       steps {
@@ -15,6 +13,7 @@ pipeline {
         sh 'cp handler.py build/'
       }
     }
+
     stage('Package') {
       steps {
         dir('build') {
@@ -22,6 +21,7 @@ pipeline {
         }
       }
     }
+
     stage('Deploy to AWS') {
       steps {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
@@ -30,11 +30,13 @@ pipeline {
       }
     }
   }
+
   post {
-  success {
-    echo "✅ Lambda deployed successfully."
-  }
-  failure {
-    echo "❌ Lambda deploy failed."
+    success {
+      echo '✅ Lambda deployed successfully.'
+    }
+    failure {
+      echo '❌ Lambda deploy failed.'
+    }
   }
 }
