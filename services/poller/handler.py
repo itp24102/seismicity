@@ -8,7 +8,7 @@ from geopy.exc import GeocoderTimedOut
 
 S3_BUCKET = os.environ.get("S3_BUCKET")
 S3_KEY_PREFIX = os.environ.get("S3_KEY_PREFIX", "events/")
-AWS_REGION = os.environ.get("AWS_REGION", "eu-central-1")
+AWS_REGION = os.environ.get("AWS_REGION", "eu-west-1")  # Ενημερώθηκε σε eu-west-1
 
 s3_client = boto3.client("s3", region_name=AWS_REGION)
 lambda_client = boto3.client("lambda", region_name=AWS_REGION)
@@ -16,7 +16,6 @@ geolocator = Nominatim(user_agent="seismicity-lambda")
 
 def reverse_geocode(lat, lon):
     try:
-        # Έλεγχος για έγκυρες συντεταγμένες
         if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
             print(f"⚠️ Μη έγκυρες συντεταγμένες: lat={lat}, lon={lon}")
             return "Μη έγκυρες συντεταγμένες"
@@ -48,7 +47,6 @@ def fetch_events_from_seismicportal(limit=20):
                 props = feature["properties"]
                 coords = feature["geometry"].get("coordinates")
 
-                # Έλεγχος για έγκυρες συντεταγμένες
                 if not coords or len(coords) < 3:
                     print(f"⚠️ Μη έγκυρες συντεταγμένες για event {event_id}: {coords}")
                     continue
@@ -83,12 +81,17 @@ def fetch_events_from_seismicportal(limit=20):
         return []
 
 def parse_and_upload(events):
+    if not S3_BUCKET:
+        print("❌ Η μεταβλητή S3_BUCKET δεν έχει οριστεί!")
+        return []
+
     if not events:
         print("Δεν βρέθηκαν νέα συμβάντα.")
         return []
 
     today = datetime.utcnow().strftime("%Y-%m-%d")
     key = f"{S3_KEY_PREFIX}{today}.json"
+    print(f"📦 S3 Bucket: {S3_BUCKET}, Key: {key}")
 
     try:
         old_data = s3_client.get_object(Bucket=S3_BUCKET, Key=key)["Body"].read().decode("utf-8")
@@ -127,15 +130,19 @@ def handler(event, context):
 
         if new_events:
             print(f"🚀 Προώθηση {len(new_events)} νέων σεισμικών δεδομένων στο influx-writer")
-            lambda_client.invoke(
-                FunctionName="influx-writer",
-                InvocationType="Event",
-                Payload=json.dumps({"events": new_events}, ensure_ascii=False).encode("utf-8")
-            )
+            try:
+                lambda_client.invoke(
+                    FunctionName="influx-writer",
+                    InvocationType="Event",
+                    Payload=json.dumps({"events": new_events}, ensure_ascii=False).encode("utf-8")
+                )
+            except Exception as e:
+                print(f"❌ Σφάλμα κατά την κλήση του influx-writer: {e}")
+                raise e
         else:
             print("ℹ️ Δεν υπάρχουν νέα δεδομένα προς αποστολή στο influx-writer.")
     except Exception as e:
         print(f"❌ Σφάλμα: {e}")
-        raise e  # Για να φαίνεται το σφάλμα στο CloudWatch
+        raise e
 
     return {"statusCode": 200, "body": "Poll from SeismicPortal completed."}
