@@ -4,9 +4,8 @@ pipeline {
     FUNCTION_NAME = 'seismicity-function'
   }
   options {
-    timestamps()
-    buildDiscarder(logRotator(numToKeepStr: '10'))
-  }
+  buildDiscarder(logRotator(numToKeepStr: '10'))
+}
   stages {
     stage('Prepare') {
       steps {

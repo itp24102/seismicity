@@ -4,7 +4,6 @@ pipeline {
     FUNCTION_NAME = 'influx-writer'
   }
   options {
-  timestamps()
   buildDiscarder(logRotator(numToKeepStr: '10'))
 }
   stages {
