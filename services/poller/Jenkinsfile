@@ -48,7 +48,7 @@ pipeline {
             ]]) {
               sh '''
                 apt-get update && apt-get install -y unzip curl
-                curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_linux_amd64.zip
+                curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
                 unzip -q tofu_linux_amd64.zip
                 mv tofu /usr/local/bin/tofu
                 chmod +x /usr/local/bin/tofu
