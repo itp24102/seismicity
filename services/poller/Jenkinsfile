@@ -20,7 +20,7 @@ pipeline {
                 dir('services/poller') {
                     container('python') {
                         sh 'pip install --target build/ -r requirements.txt'
-                        sh 'cp src/poll_seismic.py build/'
+                        sh 'cp src/handler.py build/'
                     }
                 }
             }
