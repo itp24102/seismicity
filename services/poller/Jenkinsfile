@@ -1,17 +1,7 @@
 pipeline {
   agent {
     kubernetes {
-      yaml """
-apiVersion: v1
-kind: Pod
-spec:
-  containers:
-  - name: python
-    image: python:3.11
-    command:
-    - cat
-    tty: true
-"""
+      yamlFile 'jenkins/k8s-agent.yaml'
     }
   }
   environment {
@@ -33,7 +23,8 @@ spec:
           sh '''
             rm -rf build function.zip
             mkdir -p build
-            pip install --break-system-packages -r requirements.txt -t build/
+            python -m ensurepip --upgrade
+            python -m pip install -r requirements.txt -t build/
             cp src/handler.py build/
           '''
         }
@@ -52,7 +43,12 @@ spec:
       steps {
         dir('services/poller') {
           withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-            sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://function.zip --region eu-west-1'
+            sh '''
+              aws lambda update-function-code \
+                --function-name $FUNCTION_NAME \
+                --zip-file fileb://function.zip \
+                --region eu-west-1
+            '''
           }
         }
       }
@@ -61,12 +57,7 @@ spec:
     stage('Apply Infrastructure with OpenTofu') {
       steps {
         dir('infrastructure/opentofu/aws/handler') {
-          withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-            sh '''
-              tofu init -input=false
-              tofu apply -auto-approve
-            '''
-          }
+          sh 'tofu init && tofu apply -auto-approve'
         }
       }
     }
@@ -77,7 +68,7 @@ spec:
       echo "❌ Κάποιο στάδιο απέτυχε."
     }
     success {
-      echo "✅ Επιτυχής ανάπτυξη της Lambda και του infrastructure."
+      echo "✅ Το Lambda function ανανεώθηκε και το infrastructure εφαρμόστηκε επιτυχώς."
     }
   }
 }

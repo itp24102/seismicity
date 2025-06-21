@@ -1,5 +1,9 @@
 pipeline {
-  agent any
+  agent {
+    kubernetes {
+      yamlFile 'jenkins/k8s-agent.yaml'
+    }
+  }
   environment {
     FUNCTION_NAME = 'influx-writer'
   }
@@ -19,7 +23,8 @@ pipeline {
           sh '''
             rm -rf build influx_writer.zip
             mkdir -p build
-            pip install --break-system-packages -r requirements.txt -t build/
+            python -m ensurepip --upgrade
+            python -m pip install -r requirements.txt -t build/
             cp src/influx_writer.py build/
           '''
         }
@@ -38,7 +43,12 @@ pipeline {
       steps {
         dir('services/influx-writer') {
           withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-            sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://influx_writer.zip --region eu-west-1'
+            sh '''
+              aws lambda update-function-code \
+                --function-name $FUNCTION_NAME \
+                --zip-file fileb://influx_writer.zip \
+                --region eu-west-1
+            '''
           }
         }
       }
@@ -46,11 +56,8 @@ pipeline {
 
     stage('Apply Infrastructure with OpenTofu') {
       steps {
-        dir('infrastructure/opentofu/aws') {
-          sh '''
-            tofu init
-            tofu apply -auto-approve
-          '''
+        dir('infrastructure/opentofu/aws/influx') {
+          sh 'tofu init && tofu apply -auto-approve'
         }
       }
     }
@@ -61,7 +68,7 @@ pipeline {
       echo "❌ Κάποιο στάδιο απέτυχε."
     }
     success {
-      echo "✅ Το Influx Writer pipeline ολοκληρώθηκε με επιτυχία."
+      echo "✅ Το Lambda function ανανεώθηκε και το infrastructure εφαρμόστηκε επιτυχώς."
     }
   }
 }
