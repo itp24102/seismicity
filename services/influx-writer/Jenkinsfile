@@ -1,16 +1,26 @@
 pipeline {
-  agent any
+  agent {
+    kubernetes {
+      defaultContainer 'jnlp'
+      yamlFile 'jenkins/pod.yaml'
+    }
+  }
 
   environment {
-    FUNCTION_NAME = "influx-writer"
+    AWS_REGION = 'eu-west-1'
+    FUNCTION_NAME = 'influx-writer'
   }
 
   stages {
     stage('Build') {
       steps {
         dir('services/influx-writer') {
-          sh 'pip install --target build/ -r requirements.txt'
-          sh 'cp src/influx_writer.py build/'
+          container('python') {
+            sh '''
+              pip install --target build/ -r requirements.txt
+              cp src/influx_writer.py build/
+            '''
+          }
         }
       }
     }
@@ -18,7 +28,9 @@ pipeline {
     stage('Package') {
       steps {
         dir('services/influx-writer/build') {
-          sh 'zip -r ../influx_writer.zip .'
+          container('python') {
+            sh 'zip -r ../influx_writer.zip .'
+          }
         }
       }
     }
@@ -26,8 +38,21 @@ pipeline {
     stage('Deploy to AWS') {
       steps {
         dir('services/influx-writer') {
-          withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-            sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://influx_writer.zip --region eu-west-1'
+          container('python') {
+            withCredentials([
+              [$class: 'AmazonWebServicesCredentialsBinding',
+              credentialsId: 'aws-credentials',
+              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+            ]) {
+              sh '''
+                curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+                unzip -q awscliv2.zip
+                ./aws/install
+                aws --version
+                aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://influx_writer.zip --region $AWS_REGION
+              '''
+            }
           }
         }
       }

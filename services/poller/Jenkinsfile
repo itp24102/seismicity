@@ -1,16 +1,26 @@
 pipeline {
-  agent any
+  agent {
+    kubernetes {
+      defaultContainer 'jnlp'
+      yamlFile 'jenkins/pod.yaml'
+    }
+  }
 
   environment {
-    FUNCTION_NAME = "seismicity-function"
+    AWS_REGION = 'eu-west-1'
+    FUNCTION_NAME = 'seismicity-function'
   }
 
   stages {
     stage('Build') {
       steps {
         dir('services/poller') {
-          sh 'pip install --target build/ -r requirements.txt'
-          sh 'cp src/handler.py build/'
+          container('python') {
+            sh '''
+              pip install --target build/ -r requirements.txt
+              cp src/handler.py build/
+            '''
+          }
         }
       }
     }
@@ -18,16 +28,56 @@ pipeline {
     stage('Package') {
       steps {
         dir('services/poller/build') {
-          sh 'zip -r ../function.zip .'
+          container('python') {
+            sh 'zip -r ../function.zip .'
+          }
         }
       }
     }
 
-    stage('Deploy to AWS') {
+    stage('Upload to S3') {
       steps {
         dir('services/poller') {
-          withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-            sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://function.zip --region eu-west-1'
+          container('python') {
+            withCredentials([
+              [$class: 'AmazonWebServicesCredentialsBinding',
+              credentialsId: 'aws-credentials',
+              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+            ]) {
+              sh '''
+                curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+                unzip -q awscliv2.zip
+                ./aws/install
+                aws --version
+                aws s3 cp function.zip s3://seismicity-app-bucket/function.zip --region $AWS_REGION
+              '''
+            }
+          }
+        }
+      }
+    }
+
+    stage('Apply Infrastructure with OpenTofu') {
+      steps {
+        dir('infrastructure/opentofu/aws') {
+          container('python') {
+            withCredentials([
+              [$class: 'AmazonWebServicesCredentialsBinding',
+              credentialsId: 'aws-credentials',
+              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+            ]) {
+              sh '''
+                curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
+                unzip -q tofu_1.9.1_linux_amd64.zip
+                install -o root -g root -m 0755 tofu /usr/local/bin/tofu
+                cp ../../../services/poller/function.zip .
+                cp ../../../services/influx-writer/influx_writer.zip || true
+                tofu init
+                tofu apply -auto-approve -var=influx_url=http://seismicity.westeurope.cloudapp.azure.com:8086 -var=influx_token=PLACEHOLDER_INFLUX_TOKEN
+              '''
+            }
           }
         }
       }
