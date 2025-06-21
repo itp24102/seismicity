@@ -36,10 +36,7 @@ pipeline {
       steps {
         dir('services/poller/build') {
           container('python') {
-            sh '''
-              apt-get update && apt-get install -y zip
-              zip -r ../function.zip .
-            '''
+            sh 'apt-get update && apt-get install -y zip && zip -r ../function.zip .'
           }
         }
       }
@@ -48,13 +45,20 @@ pipeline {
     stage('Deploy to AWS Lambda') {
       steps {
         dir('services/poller') {
-          withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-            sh '''
-              aws lambda update-function-code \
-              --function-name $FUNCTION_NAME \
-              --zip-file fileb://function.zip \
-              --region eu-west-1
-            '''
+          container('python') {
+            withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
+              sh '''
+                apt-get update && apt-get install -y unzip curl
+                curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+                unzip awscliv2.zip
+                ./aws/install
+                aws --version
+                aws lambda update-function-code \
+                  --function-name $FUNCTION_NAME \
+                  --zip-file fileb://function.zip \
+                  --region eu-west-1
+              '''
+            }
           }
         }
       }
@@ -62,7 +66,7 @@ pipeline {
 
     stage('Apply Infrastructure with OpenTofu') {
       steps {
-        dir('infrastructure/opentofu/aws/handler') {
+        dir('infrastructure/opentofu/aws') {
           sh '''
             tofu init
             tofu apply -auto-approve
@@ -73,11 +77,11 @@ pipeline {
   }
 
   post {
+    success {
+      echo "✅ Λειτουργία επιτυχής."
+    }
     failure {
       echo "❌ Κάποιο στάδιο απέτυχε."
-    }
-    success {
-      echo "✅ Όλα τα στάδια ολοκληρώθηκαν επιτυχώς."
     }
   }
 }
