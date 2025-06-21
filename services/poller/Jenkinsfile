@@ -6,6 +6,7 @@ pipeline {
   }
 
   environment {
+    AWS_REGION = 'eu-west-1'
     FUNCTION_NAME = 'seismicity-function'
   }
 
@@ -46,17 +47,33 @@ pipeline {
       steps {
         dir('services/poller') {
           container('python') {
-            withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
+            withCredentials([[
+              $class: 'AmazonWebServicesCredentialsBinding',
+              credentialsId: 'aws-credentials',
+              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+            ]]) {
               sh '''
                 apt-get update && apt-get install -y unzip curl
+
+                # Install AWS CLI
                 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-                unzip awscliv2.zip
+                unzip -q awscliv2.zip
                 ./aws/install
                 aws --version
+
+                # Install OpenTofu
+                curl -LO https://github.com/opentofu/opentofu/releases/latest/download/tofu_linux_amd64.zip
+                unzip -q tofu_linux_amd64.zip
+                chmod +x tofu
+                mv tofu /usr/local/bin/tofu
+                tofu version
+
+                # Deploy function
                 aws lambda update-function-code \
                   --function-name $FUNCTION_NAME \
                   --zip-file fileb://function.zip \
-                  --region eu-west-1
+                  --region $AWS_REGION
               '''
             }
           }
@@ -67,21 +84,30 @@ pipeline {
     stage('Apply Infrastructure with OpenTofu') {
       steps {
         dir('infrastructure/opentofu/aws') {
-          sh '''
-            tofu init
-            tofu apply -auto-approve
-          '''
+          container('python') {
+            withCredentials([[
+              $class: 'AmazonWebServicesCredentialsBinding',
+              credentialsId: 'aws-credentials',
+              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+            ]]) {
+              sh '''
+                tofu init
+                tofu apply -auto-approve
+              '''
+            }
+          }
         }
       }
     }
   }
 
   post {
-    success {
-      echo "✅ Λειτουργία επιτυχής."
-    }
     failure {
-      echo "❌ Κάποιο στάδιο απέτυχε."
+      echo '❌ Κάποιο στάδιο απέτυχε.'
+    }
+    success {
+      echo '✅ Η διαδικασία ολοκληρώθηκε με επιτυχία.'
     }
   }
 }
