@@ -2,11 +2,12 @@ pipeline {
   agent {
     kubernetes {
       yamlFile 'jenkins/k8s-agent.yaml'
+      defaultContainer 'python'
     }
   }
 
   environment {
-    FUNCTION_NAME = 'influx-writer'
+    AWS_REGION = 'eu-west-1'
   }
 
   stages {
@@ -19,15 +20,12 @@ pipeline {
     stage('Prepare') {
       steps {
         dir('services/influx-writer') {
-          container('python') {
-            sh '''
-              rm -rf build influx_writer.zip
-              mkdir -p build
-              python -m ensurepip --upgrade
-              pip install -r requirements.txt -t build/
-              cp src/influx_writer.py build/
-            '''
-          }
+          sh '''
+            rm -rf build influx_writer.zip
+            mkdir -p build
+            pip install -r requirements.txt -t build/
+            cp src/influx_writer.py build/
+          '''
         }
       }
     }
@@ -35,53 +33,18 @@ pipeline {
     stage('Package') {
       steps {
         dir('services/influx-writer/build') {
-          container('python') {
-            sh 'apt-get update && apt-get install -y zip && zip -r ../influx_writer.zip .'
-          }
+          sh 'zip -r ../influx_writer.zip .'
         }
       }
     }
 
-    stage('Deploy to AWS Lambda') {
-      steps {
-        dir('services/influx-writer') {
-          container('python') {
-            withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-              sh '''
-                apt-get update && apt-get install -y unzip curl
-                curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-                unzip awscliv2.zip
-                ./aws/install
-                aws --version
-                aws lambda update-function-code \
-                  --function-name $FUNCTION_NAME \
-                  --zip-file fileb://influx_writer.zip \
-                  --region eu-west-1
-              '''
-            }
-          }
-        }
-      }
-    }
-
-    stage('Apply Infrastructure with OpenTofu') {
-      steps {
-        dir('infrastructure/opentofu/aws') {
-          sh '''
-            tofu init
-            tofu apply -auto-approve
-          '''
-        }
-      }
-    }
+    // Προαιρετικά:
+    // Μπορούμε να προσθέσουμε Upload σε S3 αν θέλεις
   }
 
   post {
-    success {
-      echo "✅ Λειτουργία επιτυχής."
-    }
     failure {
-      echo "❌ Κάποιο στάδιο απέτυχε."
+      echo '❌ Κάποιο στάδιο απέτυχε.'
     }
   }
 }
