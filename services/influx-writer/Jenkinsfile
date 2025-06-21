@@ -20,13 +20,15 @@ pipeline {
     stage('Prepare') {
       steps {
         dir('services/influx-writer') {
-          sh '''
-            rm -rf build influx_writer.zip
-            mkdir -p build
-            python -m ensurepip --upgrade
-            python -m pip install -r requirements.txt -t build/
-            cp src/influx_writer.py build/
-          '''
+          container('python') {
+            sh '''
+              rm -rf build influx_writer.zip
+              mkdir -p build
+              python -m ensurepip --upgrade
+              pip install -r requirements.txt -t build/
+              cp src/influx_writer.py build/
+            '''
+          }
         }
       }
     }
@@ -34,7 +36,9 @@ pipeline {
     stage('Package') {
       steps {
         dir('services/influx-writer/build') {
-          sh 'zip -r ../influx_writer.zip .'
+          container('python') {
+            sh 'zip -r ../influx_writer.zip .'
+          }
         }
       }
     }
@@ -43,12 +47,9 @@ pipeline {
       steps {
         dir('services/influx-writer') {
           withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-            sh '''
-              aws lambda update-function-code \
-                --function-name $FUNCTION_NAME \
-                --zip-file fileb://influx_writer.zip \
-                --region eu-west-1
-            '''
+            container('python') {
+              sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://influx_writer.zip --region eu-west-1'
+            }
           }
         }
       }
@@ -56,8 +57,10 @@ pipeline {
 
     stage('Apply Infrastructure with OpenTofu') {
       steps {
-        dir('infrastructure/opentofu/aws/influx') {
-          sh 'tofu init && tofu apply -auto-approve'
+        dir('infrastructure/opentofu/aws') {
+          container('python') {
+            sh 'tofu init && tofu apply -auto-approve'
+          }
         }
       }
     }
@@ -68,7 +71,7 @@ pipeline {
       echo "❌ Κάποιο στάδιο απέτυχε."
     }
     success {
-      echo "✅ Το Lambda function ανανεώθηκε και το infrastructure εφαρμόστηκε επιτυχώς."
+      echo "✅ Όλα τα στάδια ολοκληρώθηκαν επιτυχώς!"
     }
   }
 }

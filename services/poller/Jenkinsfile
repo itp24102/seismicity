@@ -20,13 +20,15 @@ pipeline {
     stage('Prepare') {
       steps {
         dir('services/poller') {
-          sh '''
-            rm -rf build function.zip
-            mkdir -p build
-            python -m ensurepip --upgrade
-            python -m pip install -r requirements.txt -t build/
-            cp src/handler.py build/
-          '''
+          container('python') {
+            sh '''
+              rm -rf build function.zip
+              mkdir -p build
+              python -m ensurepip --upgrade
+              pip install -r requirements.txt -t build/
+              cp src/handler.py build/
+            '''
+          }
         }
       }
     }
@@ -34,7 +36,9 @@ pipeline {
     stage('Package') {
       steps {
         dir('services/poller/build') {
-          sh 'zip -r ../function.zip .'
+          container('python') {
+            sh 'zip -r ../function.zip .'
+          }
         }
       }
     }
@@ -43,12 +47,9 @@ pipeline {
       steps {
         dir('services/poller') {
           withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-            sh '''
-              aws lambda update-function-code \
-                --function-name $FUNCTION_NAME \
-                --zip-file fileb://function.zip \
-                --region eu-west-1
-            '''
+            container('python') {
+              sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://function.zip --region eu-west-1'
+            }
           }
         }
       }
@@ -56,8 +57,10 @@ pipeline {
 
     stage('Apply Infrastructure with OpenTofu') {
       steps {
-        dir('infrastructure/opentofu/aws/handler') {
-          sh 'tofu init && tofu apply -auto-approve'
+        dir('infrastructure/opentofu/aws') {
+          container('python') {
+            sh 'tofu init && tofu apply -auto-approve'
+          }
         }
       }
     }
@@ -68,7 +71,7 @@ pipeline {
       echo "❌ Κάποιο στάδιο απέτυχε."
     }
     success {
-      echo "✅ Το Lambda function ανανεώθηκε και το infrastructure εφαρμόστηκε επιτυχώς."
+      echo "✅ Όλα τα στάδια ολοκληρώθηκαν επιτυχώς!"
     }
   }
 }
