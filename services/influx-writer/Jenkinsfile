@@ -20,7 +20,7 @@ pipeline {
             rm -rf build influx_writer.zip
             mkdir -p build
             pip install --break-system-packages -r requirements.txt -t build/
-            cp influx_writer.py build/
+            cp src/influx_writer.py build/
           '''
         }
       }
@@ -34,7 +34,7 @@ pipeline {
       }
     }
 
-    stage('Deploy to AWS') {
+    stage('Deploy to AWS Lambda') {
       steps {
         dir('services/influx-writer') {
           withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
@@ -43,14 +43,25 @@ pipeline {
         }
       }
     }
+
+    stage('Apply Infrastructure with OpenTofu') {
+      steps {
+        dir('infrastructure/opentofu/aws') {
+          sh '''
+            tofu init
+            tofu apply -auto-approve
+          '''
+        }
+      }
+    }
   }
 
   post {
     failure {
-      echo "❌ Lambda deploy failed."
+      echo "❌ Κάποιο στάδιο απέτυχε."
     }
     success {
-      echo "✅ Lambda deploy completed successfully."
+      echo "✅ Το Influx Writer pipeline ολοκληρώθηκε με επιτυχία."
     }
   }
 }

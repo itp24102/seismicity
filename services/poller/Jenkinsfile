@@ -20,7 +20,7 @@ pipeline {
             rm -rf build function.zip
             mkdir -p build
             pip install --break-system-packages -r requirements.txt -t build/
-            cp handler.py build/
+            cp src/handler.py build/
           '''
         }
       }
@@ -34,7 +34,7 @@ pipeline {
       }
     }
 
-    stage('Deploy to AWS') {
+    stage('Deploy to AWS Lambda') {
       steps {
         dir('services/poller') {
           withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
@@ -43,14 +43,25 @@ pipeline {
         }
       }
     }
+
+    stage('Apply Infrastructure with OpenTofu') {
+      steps {
+        dir('infrastructure/opentofu/aws') {
+          sh '''
+            tofu init
+            tofu apply -auto-approve
+          '''
+        }
+      }
+    }
   }
 
   post {
     failure {
-      echo "❌ Lambda deploy failed."
+      echo "❌ Κάποιο στάδιο απέτυχε."
     }
     success {
-      echo "✅ Lambda deploy completed successfully."
+      echo "✅ Το Poller pipeline ολοκληρώθηκε με επιτυχία."
     }
   }
 }
