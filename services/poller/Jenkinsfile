@@ -1,44 +1,48 @@
 pipeline {
   agent {
     kubernetes {
-      yamlFile 'jenkins/k8s-agent.yaml'
+      yamlFile 'jenkins/pod.yaml'
     }
   }
 
   environment {
     AWS_REGION = 'eu-west-1'
     LAMBDA_FUNCTION_NAME = 'seismicity-function'
-    TOFU_VERSION = '1.9.1'
   }
 
   stages {
-    stage('Checkout') {
+    stage('Trigger influx-writer build') {
       steps {
-        checkout scm
-      }
-    }
-
-    stage('Prepare') {
-      steps {
-        dir('services/poller') {
-          container('python') {
-            sh '''
-              rm -rf build function.zip
-              mkdir -p build
-              python -m ensurepip --upgrade
-              pip install boto3 geopy influxdb-client -t build/
-              cp src/handler.py build/
-            '''
-          }
+        script {
+          echo '🔁 Κλήση του pipeline seismicity-influx-writer πριν από το tofu apply...'
+          build job: 'seismicity-influx-writer', wait: true
         }
       }
     }
 
-    stage('Package') {
+    stage('Install Dependencies') {
       steps {
-        dir('services/poller/build') {
+        container('python') {
+          sh '''
+            apt-get update && apt-get install -y unzip curl zip
+            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            unzip -q awscliv2.zip
+            ./aws/install
+          '''
+        }
+      }
+    }
+
+    stage('Build Lambda Package') {
+      steps {
+        dir('services/poller') {
           container('python') {
-            sh 'apt-get update && apt-get install -y zip && zip -r ../function.zip .'
+            sh '''
+              pip install -r requirements.txt -t build/
+              cp src/handler.py build/
+              cd build
+              zip -r ../function.zip .
+            '''
           }
         }
       }
@@ -48,12 +52,12 @@ pipeline {
       steps {
         dir('services/poller') {
           container('python') {
-            withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
+            withCredentials([[
+              $class: 'AmazonWebServicesCredentialsBinding',
+              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+            ]]) {
               sh '''
-                curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-                unzip -q awscliv2.zip
-                ./aws/install
-                aws --version
                 aws s3 cp function.zip s3://seismicity-app-bucket/function.zip --region $AWS_REGION
               '''
             }
@@ -66,21 +70,19 @@ pipeline {
       steps {
         dir('infrastructure/opentofu/aws') {
           container('python') {
-            withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
+            withCredentials([[
+              $class: 'AmazonWebServicesCredentialsBinding',
+              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+            ]]) {
               sh '''
-                curl -LO https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip
-                unzip -q tofu_${TOFU_VERSION}_linux_amd64.zip
+                curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
+                unzip -q tofu_1.9.1_linux_amd64.zip
                 install -o root -g root -m 0755 tofu /usr/local/bin/tofu
-                tofu --version
-
-                # Αντιγραφή μόνο του function.zip
                 cp ../../../services/poller/function.zip .
-
-                # Το influx_writer.zip μπορεί να λείπει — δεν σκάει
-                cp ../../../services/influx-writer/influx_writer.zip . || true
-
+                cp ../../../services/influx-writer/influx_writer.zip .
                 tofu init
-                tofu apply -auto-approve -var="influx_url=http://seismicity.westeurope.cloudapp.azure.com:8086" -var="influx_token=PLACEHOLDER_INFLUX_TOKEN"
+                tofu apply -auto-approve -var=influx_url=http://seismicity.westeurope.cloudapp.azure.com:8086 -var=influx_token=PLACEHOLDER_INFLUX_TOKEN
               '''
             }
           }
