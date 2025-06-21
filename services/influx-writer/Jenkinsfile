@@ -7,7 +7,7 @@ pipeline {
   }
 
   environment {
-    AWS_REGION = 'eu-west-1'
+    FUNCTION_NAME = "influx-writer"
   }
 
   stages {
@@ -21,6 +21,7 @@ pipeline {
       steps {
         dir('services/influx-writer') {
           sh '''
+            apt-get update && apt-get install -y zip
             rm -rf build influx_writer.zip
             mkdir -p build
             pip install -r requirements.txt -t build/
@@ -38,13 +39,10 @@ pipeline {
       }
     }
 
-    // Προαιρετικά:
-    // Μπορούμε να προσθέσουμε Upload σε S3 αν θέλεις
-  }
-
-  post {
-    failure {
-      echo '❌ Κάποιο στάδιο απέτυχε.'
+    stage('Post Actions') {
+      steps {
+        echo '✅ Complete'
+      }
     }
   }
 }
