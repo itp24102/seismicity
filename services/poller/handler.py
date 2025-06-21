@@ -2,7 +2,7 @@ import os
 import requests
 import json
 import boto3
-from datetime import datetime
+from datetime import timedelta
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut
 
@@ -28,11 +28,12 @@ def reverse_geocode(lat, lon):
         print(f"⚠️ Σφάλμα γεωκωδικοποίησης: {e}")
         return "Σφάλμα γεωκωδικοποίησης"
 
-def fetch_events_from_seismicportal(limit=20):
+def fetch_events_from_seismicportal(limit=200):
+    start = (datetime.utcnow() - timedelta(hours=6)).isoformat() + "Z"
     url = (
         "https://www.seismicportal.eu/fdsnws/event/1/query"
-        "?format=json&limit=20&orderby=time-asc"
-        "&minlat=34&maxlat=42&minlon=19&maxlon=30"
+        f"?format=json&starttime={start}&limit={limit}"
+        "&orderby=time-asc&minlat=34&maxlat=42&minlon=19&maxlon=30"
     )
     print(f"🔗 Querying SeismicPortal: {url}")
     try:
