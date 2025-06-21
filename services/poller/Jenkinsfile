@@ -7,7 +7,7 @@ pipeline {
 
   environment {
     AWS_REGION = 'eu-west-1'
-    FUNCTION_NAME = 'seismicity-function'
+    LAMBDA_FUNCTION_NAME = 'seismicity-function'
   }
 
   stages {
@@ -19,7 +19,7 @@ pipeline {
 
     stage('Prepare') {
       steps {
-        dir('services/poller') {
+        dir("${env.WORKSPACE}/services/poller") {
           container('python') {
             sh '''
               rm -rf build function.zip
@@ -35,9 +35,9 @@ pipeline {
 
     stage('Package') {
       steps {
-        dir('services/poller/build') {
+        dir("${env.WORKSPACE}/services/poller/build") {
           container('python') {
-            sh 'apt-get update && apt-get install -y zip && zip -r ../function.zip .'
+            sh 'zip -r ../function.zip .'
           }
         }
       }
@@ -45,35 +45,20 @@ pipeline {
 
     stage('Deploy to AWS Lambda') {
       steps {
-        dir('services/poller') {
+        dir("${env.WORKSPACE}/services/poller") {
           container('python') {
             withCredentials([[
               $class: 'AmazonWebServicesCredentialsBinding',
-              credentialsId: 'aws-credentials',
               accessKeyVariable: 'AWS_ACCESS_KEY_ID',
               secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
             ]]) {
               sh '''
                 apt-get update && apt-get install -y unzip curl
-
-                # Install AWS CLI
-                curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+                curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
                 unzip -q awscliv2.zip
                 ./aws/install
                 aws --version
-
-                # Install OpenTofu
-                curl -LO https://github.com/opentofu/opentofu/releases/latest/download/tofu_linux_amd64.zip
-                unzip -q tofu_linux_amd64.zip
-                chmod +x tofu
-                mv tofu /usr/local/bin/tofu
-                tofu version
-
-                # Deploy function
-                aws lambda update-function-code \
-                  --function-name $FUNCTION_NAME \
-                  --zip-file fileb://function.zip \
-                  --region $AWS_REGION
+                aws lambda update-function-code --function-name $LAMBDA_FUNCTION_NAME --zip-file fileb://function.zip --region $AWS_REGION
               '''
             }
           }
@@ -83,19 +68,16 @@ pipeline {
 
     stage('Apply Infrastructure with OpenTofu') {
       steps {
-        dir('infrastructure/opentofu/aws') {
+        dir("${env.WORKSPACE}/infrastructure/opentofu/aws") {
           container('python') {
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              credentialsId: 'aws-credentials',
-              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-            ]]) {
-              sh '''
-                tofu init
-                tofu apply -auto-approve
-              '''
-            }
+            sh '''
+              curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/opentofu_1.9.1_linux_amd64.zip
+              unzip -q opentofu_1.9.1_linux_amd64.zip
+              chmod +x tofu
+              mv tofu /usr/local/bin/tofu
+              tofu init
+              tofu apply -auto-approve
+            '''
           }
         }
       }
@@ -105,9 +87,6 @@ pipeline {
   post {
     failure {
       echo '❌ Κάποιο στάδιο απέτυχε.'
-    }
-    success {
-      echo '✅ Η διαδικασία ολοκληρώθηκε με επιτυχία.'
     }
   }
 }
