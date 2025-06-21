@@ -1,53 +1,60 @@
-# influx_writer.py
 import os
 import json
-from influxdb_client import InfluxDBClient, Point, WritePrecision
-from influxdb_client.client.write_api import SYNCHRONOUS
-from datetime import datetime
+import requests
 
-INFLUX_URL = os.environ.get("INFLUX_URL")
-INFLUX_TOKEN = os.environ.get("INFLUX_TOKEN")
-INFLUX_ORG = os.environ.get("INFLUX_ORG", "seismicity")
-INFLUX_BUCKET = os.environ.get("INFLUX_BUCKET", "seismicity")
+INFLUX_URL = os.environ.get("INFLUX_URL")  # π.χ. http://<ip>:8086/api/v2/write?bucket=<bucket>&org=<org>&precision=s
+INFLUX_TOKEN = os.environ.get("INFLUX_TOKEN")  # το token που πήραμε από το InfluxDB UI
 
-client = InfluxDBClient(url=INFLUX_URL, token=INFLUX_TOKEN, org=INFLUX_ORG)
-write_api = client.write_api(write_options=SYNCHRONOUS)
+def format_line_protocol(event):
+    try:
+        return (
+            f"earthquake,id={event['id']},location=\"{event['location'].replace(' ', '\\ ')}\" "
+            f"magnitude={event['magnitude']},depth={event['depth']},lat={event['lat']},lon={event['lon']} "
+            f"{int(parse_iso8601(event['timestamp']))}"
+        )
+    except Exception as e:
+        print(f"⚠️ Σφάλμα format για event {event}: {e}")
+        return None
+
+def parse_iso8601(timestamp_str):
+    from datetime import datetime
+    dt = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+    return int(dt.timestamp())
 
 def handler(event, context):
     print("📡 Influx Writer ενεργοποιήθηκε")
-    events = event.get("events", [])
-    if not events:
-        print("⚠️ Δεν ελήφθησαν σεισμικά δεδομένα.")
-        return {"statusCode": 400, "body": "No events provided"}
-
-    points = []
-    for e in events:
-        try:
-            timestamp = e.get("timestamp")
-            if not timestamp:
-                print(f"⚠️ Event χωρίς timestamp: {e}")
-                continue
-
-            time = datetime.fromisoformat(timestamp.replace("Z", ""))
-
-            point = (
-                Point("earthquake")
-                .tag("location", e.get("location", "Άγνωστη"))
-                .field("magnitude", float(e.get("magnitude", 0)))
-                .field("depth", float(e.get("depth", 0)))
-                .field("lat", float(e.get("lat", 0)))
-                .field("lon", float(e.get("lon", 0)))
-                .time(time, WritePrecision.NS)
-            )
-            points.append(point)
-        except Exception as ex:
-            print(f"❌ Σφάλμα μετατροπής σεισμού: {ex}")
-            print(json.dumps(e, ensure_ascii=False, indent=2))
 
     try:
-        write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=points)
-        print(f"✅ Καταχωρήθηκαν {len(points)} σημεία στο InfluxDB.")
-        return {"statusCode": 200, "body": f"Wrote {len(points)} events"}
-    except Exception as ex:
-        print(f"❌ Σφάλμα κατά την εγγραφή στο InfluxDB: {ex}")
-        return {"statusCode": 500, "body": "InfluxDB write error"}
+        events = event.get("events", [])
+        if not events:
+            print("⚠️ Δεν δόθηκαν δεδομένα για εγγραφή.")
+            return {"statusCode": 400, "body": "No events provided"}
+
+        payload = ""
+        for ev in events:
+            line = format_line_protocol(ev)
+            if line:
+                payload += line + "\n"
+
+        if not payload.strip():
+            print("⚠️ Κανένα έγκυρο event για αποστολή.")
+            return {"statusCode": 400, "body": "No valid line protocol entries"}
+
+        headers = {
+            "Authorization": f"Token {INFLUX_TOKEN}",
+            "Content-Type": "text/plain; charset=utf-8"
+        }
+
+        print(f"📨 Στέλνονται {len(events)} σεισμικά γεγονότα στο InfluxDB...")
+        response = requests.post(INFLUX_URL, data=payload.encode("utf-8"), headers=headers, timeout=10)
+
+        if response.status_code != 204:
+            print(f"❌ Σφάλμα InfluxDB: HTTP {response.status_code} - {response.text}")
+            return {"statusCode": response.status_code, "body": response.text}
+
+        print(f"✅ Καταχωρήθηκαν {len(events)} σημεία στο InfluxDB.")
+        return {"statusCode": 200, "body": f"Inserted {len(events)} events"}
+    
+    except Exception as e:
+        print(f"❌ Σφάλμα στο influx-writer: {e}")
+        return {"statusCode": 500, "body": str(e)}
