@@ -1,34 +1,34 @@
 pipeline {
-  agent {
-    kubernetes {
-      yamlFile 'jenkins/pod.yaml'
-    }
-  }
+  agent any
 
   environment {
-    LAMBDA_FUNCTION_NAME = 'influx-writer'
     AWS_REGION = 'eu-west-1'
+    FUNCTION_NAME = 'influx-writer'
+    S3_BUCKET = 'seismicity-app-bucket'
   }
 
   stages {
-    stage('Build') {
+    stage('Build ZIP') {
       steps {
         dir('services/influx-writer') {
-          container('python') {
-            sh '''
-              pip install --target build/ -r requirements.txt
-              cp src/influx_writer.py build/
-            '''
-          }
+          sh '''
+            pip install --target build/ -r requirements.txt
+            cp src/influx_writer.py build/
+            cd build
+            zip -r ../influx_writer.zip .
+          '''
         }
       }
     }
 
-    stage('Package') {
+    stage('Upload to S3') {
       steps {
-        dir('services/influx-writer/build') {
-          container('python') {
-            sh 'apt-get update && apt-get install -y zip && zip -r ../influx_writer.zip .'
+        dir('services/influx-writer') {
+          withCredentials([[
+            $class: 'AmazonWebServicesCredentialsBinding',
+            credentialsId: 'aws-credentials'
+          ]]) {
+            sh 'aws s3 cp influx_writer.zip s3://$S3_BUCKET/influx_writer.zip --region $AWS_REGION'
           }
         }
       }
@@ -36,24 +36,11 @@ pipeline {
 
     stage('Deploy to AWS Lambda') {
       steps {
-        dir('services/influx-writer') {
-          container('python') {
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              credentialsId: 'aws-credentials',
-              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-            ]]) {
-              sh '''
-                apt-get update && apt-get install -y unzip curl
-                curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-                unzip -q awscliv2.zip
-                ./aws/install
-                aws --version
-                aws lambda update-function-code --function-name $LAMBDA_FUNCTION_NAME --zip-file fileb://influx_writer.zip --region $AWS_REGION
-              '''
-            }
-          }
+        withCredentials([[
+          $class: 'AmazonWebServicesCredentialsBinding',
+          credentialsId: 'aws-credentials'
+        ]]) {
+          sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --s3-bucket $S3_BUCKET --s3-key influx_writer.zip --region $AWS_REGION'
         }
       }
     }
@@ -61,7 +48,7 @@ pipeline {
 
   post {
     failure {
-      echo '❌ Κάποιο στάδιο απέτυχε.'
+      echo "❌ Κάποιο στάδιο απέτυχε."
     }
   }
 }
