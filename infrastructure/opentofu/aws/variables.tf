@@ -5,6 +5,3 @@ variable "region" {
 variable "s3_bucket_name" {
   default = "seismicity-app-bucket"
 }
-
-variable "influx_url" {}
-variable "influx_token" {}
