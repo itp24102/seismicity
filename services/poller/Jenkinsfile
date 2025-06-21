@@ -4,12 +4,11 @@ pipeline {
       yamlFile 'jenkins/k8s-agent.yaml'
     }
   }
+
   environment {
     FUNCTION_NAME = 'seismicity-function'
   }
-  options {
-    skipDefaultCheckout()
-  }
+
   stages {
     stage('Checkout') {
       steps {
@@ -37,7 +36,10 @@ pipeline {
       steps {
         dir('services/poller/build') {
           container('python') {
-            sh 'zip -r ../function.zip .'
+            sh '''
+              apt-get update && apt-get install -y zip
+              zip -r ../function.zip .
+            '''
           }
         }
       }
@@ -47,9 +49,12 @@ pipeline {
       steps {
         dir('services/poller') {
           withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-            container('python') {
-              sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://function.zip --region eu-west-1'
-            }
+            sh '''
+              aws lambda update-function-code \
+              --function-name $FUNCTION_NAME \
+              --zip-file fileb://function.zip \
+              --region eu-west-1
+            '''
           }
         }
       }
@@ -57,10 +62,11 @@ pipeline {
 
     stage('Apply Infrastructure with OpenTofu') {
       steps {
-        dir('infrastructure/opentofu/aws') {
-          container('python') {
-            sh 'tofu init && tofu apply -auto-approve'
-          }
+        dir('infrastructure/opentofu/aws/handler') {
+          sh '''
+            tofu init
+            tofu apply -auto-approve
+          '''
         }
       }
     }
@@ -71,7 +77,7 @@ pipeline {
       echo "❌ Κάποιο στάδιο απέτυχε."
     }
     success {
-      echo "✅ Όλα τα στάδια ολοκληρώθηκαν επιτυχώς!"
+      echo "✅ Όλα τα στάδια ολοκληρώθηκαν επιτυχώς."
     }
   }
 }
