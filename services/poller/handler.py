@@ -2,7 +2,7 @@ import os
 import requests
 import json
 import boto3
-from datetime import timedelta
+from datetime import datetime, timedelta
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut
 
