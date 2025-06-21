@@ -1,5 +1,19 @@
 pipeline {
-  agent any
+  agent {
+    kubernetes {
+      yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: python
+    image: python:3.11
+    command:
+    - cat
+    tty: true
+"""
+    }
+  }
   environment {
     FUNCTION_NAME = 'seismicity-function'
   }
@@ -46,11 +60,13 @@ pipeline {
 
     stage('Apply Infrastructure with OpenTofu') {
       steps {
-        dir('infrastructure/opentofu/aws') {
-          sh '''
-            tofu init
-            tofu apply -auto-approve
-          '''
+        dir('infrastructure/opentofu/aws/handler') {
+          withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
+            sh '''
+              tofu init -input=false
+              tofu apply -auto-approve
+            '''
+          }
         }
       }
     }
@@ -61,7 +77,7 @@ pipeline {
       echo "❌ Κάποιο στάδιο απέτυχε."
     }
     success {
-      echo "✅ Το Poller pipeline ολοκληρώθηκε με επιτυχία."
+      echo "✅ Επιτυχής ανάπτυξη της Lambda και του infrastructure."
     }
   }
 }
