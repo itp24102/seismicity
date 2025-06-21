@@ -1,90 +1,33 @@
 pipeline {
-  agent {
-    kubernetes {
-      yamlFile 'jenkins/pod.yaml'
-    }
-  }
+  agent any
 
   environment {
-    AWS_REGION = 'eu-west-1'
-    LAMBDA_FUNCTION_NAME = 'seismicity-function'
+    FUNCTION_NAME = "seismicity-function"
   }
 
   stages {
-    stage('Trigger influx-writer build') {
-      steps {
-        script {
-          echo '🔁 Κλήση του pipeline seismicity-influx-writer πριν από το tofu apply...'
-          build job: 'seismicity-influx-writer', wait: true
-        }
-      }
-    }
-
-    stage('Install Dependencies') {
-      steps {
-        container('python') {
-          sh '''
-            apt-get update && apt-get install -y unzip curl zip
-            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-            unzip -q awscliv2.zip
-            ./aws/install
-          '''
-        }
-      }
-    }
-
-    stage('Build Lambda Package') {
+    stage('Build') {
       steps {
         dir('services/poller') {
-          container('python') {
-            sh '''
-              pip install -r requirements.txt -t build/
-              cp src/handler.py build/
-              cd build
-              zip -r ../function.zip .
-            '''
-          }
+          sh 'pip install --target build/ -r requirements.txt'
+          sh 'cp src/handler.py build/'
         }
       }
     }
 
-    stage('Upload to S3') {
+    stage('Package') {
+      steps {
+        dir('services/poller/build') {
+          sh 'zip -r ../function.zip .'
+        }
+      }
+    }
+
+    stage('Deploy to AWS') {
       steps {
         dir('services/poller') {
-          container('python') {
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-            ]]) {
-              sh '''
-                aws s3 cp function.zip s3://seismicity-app-bucket/function.zip --region $AWS_REGION
-              '''
-            }
-          }
-        }
-      }
-    }
-
-    stage('Apply Infrastructure with OpenTofu') {
-      steps {
-        dir('infrastructure/opentofu/aws') {
-          container('python') {
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-            ]]) {
-              sh '''
-                curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
-                unzip -q tofu_1.9.1_linux_amd64.zip
-                install -o root -g root -m 0755 tofu /usr/local/bin/tofu
-                cp ../../../services/poller/function.zip .
-                cp ../../../services/influx-writer/influx_writer.zip .
-                tofu init
-                tofu apply -auto-approve -var=influx_url=http://seismicity.westeurope.cloudapp.azure.com:8086 -var=influx_token=PLACEHOLDER_INFLUX_TOKEN
-              '''
-            }
+          withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
+            sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://function.zip --region eu-west-1'
           }
         }
       }
