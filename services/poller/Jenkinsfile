@@ -2,14 +2,13 @@ pipeline {
   agent {
     kubernetes {
       yamlFile 'jenkins/k8s-agent.yaml'
+      defaultContainer 'python'
     }
   }
-
   environment {
     AWS_REGION = 'eu-west-1'
     LAMBDA_FUNCTION_NAME = 'seismicity-function'
   }
-
   stages {
     stage('Checkout') {
       steps {
@@ -19,51 +18,50 @@ pipeline {
 
     stage('Prepare') {
       steps {
-        dir("${env.WORKSPACE}/services/poller") {
-          container('python') {
-            sh '''
-              rm -rf build function.zip
-              mkdir -p build
-              python -m ensurepip --upgrade
-              pip install -r requirements.txt -t build/
-              cp src/handler.py build/
-            '''
-          }
+        dir('services/poller') {
+          sh '''
+            rm -rf build function.zip
+            mkdir -p build
+            python -m ensurepip --upgrade
+            pip install -r requirements.txt -t build/
+            cp src/handler.py build/
+          '''
         }
       }
     }
 
     stage('Package') {
       steps {
-        dir("${env.WORKSPACE}/services/poller/build") {
-          container('python') {
-            sh '''
-              apt-get update && apt-get install -y zip
-              zip -r ../function.zip .
-              '''
-          }
+        dir('services/poller/build') {
+          sh 'apt-get update && apt-get install -y zip && zip -r ../function.zip .'
         }
       }
-  }
-
+    }
 
     stage('Deploy to AWS Lambda') {
       steps {
-        dir("${env.WORKSPACE}/services/poller") {
+        dir('services/poller') {
           container('python') {
             withCredentials([[
               $class: 'AmazonWebServicesCredentialsBinding',
-              credentialsId: 'aws-credentials',
-              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+              credentialsId: 'aws-credentials'
             ]]) {
               sh '''
                 apt-get update && apt-get install -y unzip curl
+                curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_linux_amd64.zip
+                unzip -q tofu_linux_amd64.zip
+                mv tofu /usr/local/bin/tofu
+                chmod +x /usr/local/bin/tofu
+                tofu --version
+
                 curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
                 unzip -q awscliv2.zip
                 ./aws/install
-                aws --version
-                aws lambda update-function-code --function-name $LAMBDA_FUNCTION_NAME --zip-file fileb://function.zip --region $AWS_REGION
+
+                aws lambda update-function-code \
+                  --function-name $LAMBDA_FUNCTION_NAME \
+                  --zip-file fileb://function.zip \
+                  --region $AWS_REGION
               '''
             }
           }
@@ -73,22 +71,22 @@ pipeline {
 
     stage('Apply Infrastructure with OpenTofu') {
       steps {
-        dir("${env.WORKSPACE}/infrastructure/opentofu/aws") {
+        dir('infrastructure/opentofu/aws') {
           container('python') {
-            sh '''
-              curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/opentofu_1.9.1_linux_amd64.zip
-              unzip -q opentofu_1.9.1_linux_amd64.zip
-              chmod +x tofu
-              mv tofu /usr/local/bin/tofu
-              tofu init
-              tofu apply -auto-approve
-            '''
+            withCredentials([[
+              $class: 'AmazonWebServicesCredentialsBinding',
+              credentialsId: 'aws-credentials'
+            ]]) {
+              sh '''
+                tofu init
+                tofu apply -auto-approve
+              '''
+            }
           }
         }
       }
     }
   }
-
   post {
     failure {
       echo '❌ Κάποιο στάδιο απέτυχε.'
