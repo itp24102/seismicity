@@ -37,11 +37,15 @@ pipeline {
       steps {
         dir("${env.WORKSPACE}/services/poller/build") {
           container('python') {
-            sh 'zip -r ../function.zip .'
+            sh '''
+              apt-get update && apt-get install -y zip
+              zip -r ../function.zip .
+              '''
           }
         }
       }
-    }
+  }
+
 
     stage('Deploy to AWS Lambda') {
       steps {
