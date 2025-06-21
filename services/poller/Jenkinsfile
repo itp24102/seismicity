@@ -1,52 +1,51 @@
 pipeline {
   agent {
     kubernetes {
-      yaml """
-apiVersion: v1
-kind: Pod
-spec:
-  containers:
-    - name: python
-      image: python:3.9-slim
-      command:
-        - cat
-      tty: true
-"""
-      defaultContainer 'python'
+      yamlFile 'jenkins/pod.yaml'
     }
   }
 
   environment {
-    AWS_REGION = 'eu-west-1'
-    FUNCTION_NAME = 'seismicity-function'
+    AWS_DEFAULT_REGION = 'eu-west-1'
     S3_BUCKET = 'seismicity-app-bucket'
+    S3_KEY = 'function.zip'
   }
 
   stages {
-    stage('Build ZIP') {
+    stage('Build') {
       steps {
-        dir('services/poller') {
-          sh '''
-            pip install --upgrade pip
-            pip install --target build/ -r requirements.txt
-            cp src/handler.py build/
-            cd build
-            apt-get update && apt-get install -y zip
-            zip -r ../function.zip .
-          '''
+        dir("${env.WORKSPACE}/services/poller") {
+          container('python') {
+            sh '''
+              pip install --target build/ -r requirements.txt
+              cp src/handler.py build/
+            '''
+          }
+        }
+      }
+    }
+
+    stage('Package') {
+      steps {
+        dir("${env.WORKSPACE}/services/poller/build") {
+          container('python') {
+            sh 'apt-get update && apt-get install -y zip'
+            sh 'zip -r ../function.zip .'
+          }
         }
       }
     }
 
     stage('Upload to S3') {
       steps {
-        dir('services/poller') {
-          withCredentials([[
-            $class: 'AmazonWebServicesCredentialsBinding',
-            credentialsId: 'aws-credentials'
-          ]]) {
-            sh 'apt-get update && apt-get install -y awscli'
-            sh 'aws s3 cp function.zip s3://$S3_BUCKET/function.zip --region $AWS_REGION'
+        dir("${env.WORKSPACE}/services/poller") {
+          container('awscli') {
+            withCredentials([[
+              $class: 'AmazonWebServicesCredentialsBinding',
+              credentialsId: 'aws-credentials'
+            ]]) {
+              sh 'aws s3 cp function.zip s3://${S3_BUCKET}/${S3_KEY} --region ${AWS_DEFAULT_REGION}'
+            }
           }
         }
       }
@@ -54,13 +53,15 @@ spec:
 
     stage('Apply Infrastructure with OpenTofu') {
       steps {
-        dir('infrastructure/opentofu/aws') {
+        dir("${env.WORKSPACE}/infrastructure/opentofu/aws") {
           container('python') {
             withCredentials([[
               $class: 'AmazonWebServicesCredentialsBinding',
               credentialsId: 'aws-credentials'
             ]]) {
               sh '''
+                apt-get update && apt-get install -y curl unzip
+
                 curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
                 unzip -q tofu_1.9.1_linux_amd64.zip
                 install -o root -g root -m 0755 tofu /usr/local/bin/tofu
@@ -82,7 +83,7 @@ spec:
 
   post {
     failure {
-      echo "❌ Κάποιο στάδιο απέτυχε."
+      echo '❌ Κάποιο στάδιο απέτυχε.'
     }
   }
 }
