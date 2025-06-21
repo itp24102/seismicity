@@ -5,11 +5,9 @@ pipeline {
       defaultContainer 'python'
     }
   }
-
   environment {
     AWS_REGION = 'eu-west-1'
   }
-
   stages {
     stage('Install Dependencies') {
       steps {
@@ -67,14 +65,13 @@ pipeline {
               credentialsId: 'aws-credentials'
             ]]) {
               sh '''
+                apt-get update && apt-get install -y curl unzip
                 curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
                 unzip -q tofu_1.9.1_linux_amd64.zip
                 install -o root -g root -m 0755 tofu /usr/local/bin/tofu
-
+                cp ../../../services/poller/function.zip .
                 tofu init
-                tofu apply -auto-approve \
-                  -var=influx_url=http://seismicity.westeurope.cloudapp.azure.com:8086 \
-                  -var=influx_token=PLACEHOLDER_INFLUX_TOKEN
+                tofu apply -auto-approve -var=influx_url=http://seismicity.westeurope.cloudapp.azure.com:8086 -var=influx_token=PLACEHOLDER_INFLUX_TOKEN
               '''
             }
           }
@@ -82,7 +79,6 @@ pipeline {
       }
     }
   }
-
   post {
     failure {
       echo '❌ Κάποιο στάδιο απέτυχε.'
