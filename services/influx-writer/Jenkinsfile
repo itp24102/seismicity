@@ -1,14 +1,13 @@
 pipeline {
   agent {
     kubernetes {
-      defaultContainer 'jnlp'
       yamlFile 'jenkins/pod.yaml'
     }
   }
 
   environment {
+    LAMBDA_FUNCTION_NAME = 'influx-writer'
     AWS_REGION = 'eu-west-1'
-    FUNCTION_NAME = 'influx-writer'
   }
 
   stages {
@@ -29,28 +28,29 @@ pipeline {
       steps {
         dir('services/influx-writer/build') {
           container('python') {
-            sh 'zip -r ../influx_writer.zip .'
+            sh 'apt-get update && apt-get install -y zip && zip -r ../influx_writer.zip .'
           }
         }
       }
     }
 
-    stage('Deploy to AWS') {
+    stage('Deploy to AWS Lambda') {
       steps {
         dir('services/influx-writer') {
           container('python') {
-            withCredentials([
-              [$class: 'AmazonWebServicesCredentialsBinding',
+            withCredentials([[
+              $class: 'AmazonWebServicesCredentialsBinding',
               credentialsId: 'aws-credentials',
               accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
-            ]) {
+              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+            ]]) {
               sh '''
+                apt-get update && apt-get install -y unzip curl
                 curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
                 unzip -q awscliv2.zip
                 ./aws/install
                 aws --version
-                aws lambda update-function-code --function-name $FUNCTION_NAME --zip-file fileb://influx_writer.zip --region $AWS_REGION
+                aws lambda update-function-code --function-name $LAMBDA_FUNCTION_NAME --zip-file fileb://influx_writer.zip --region $AWS_REGION
               '''
             }
           }
