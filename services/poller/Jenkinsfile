@@ -2,6 +2,7 @@ pipeline {
   agent {
     kubernetes {
       yamlFile 'jenkins/k8s-agent.yaml'
+      defaultContainer 'python'
     }
   }
 
@@ -9,10 +10,10 @@ pipeline {
     AWS_REGION = 'eu-west-1'
     LAMBDA_FUNCTION_NAME = 'seismicity-function'
     S3_BUCKET = 'seismicity-app-bucket'
+    S3_KEY = 'function.zip'
   }
 
   stages {
-
     stage('Checkout') {
       steps {
         checkout scm
@@ -24,6 +25,7 @@ pipeline {
         dir('services/poller') {
           container('python') {
             sh '''
+              apt-get update && apt-get install -y zip
               rm -rf build function.zip
               mkdir -p build
               pip install -r requirements.txt -t build/
@@ -42,15 +44,10 @@ pipeline {
           container('python') {
             withCredentials([[
               $class: 'AmazonWebServicesCredentialsBinding',
-              credentialsId: 'aws-credentials',
-              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+              credentialsId: 'aws-credentials'
             ]]) {
               sh '''
-                curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-                unzip -q awscliv2.zip
-                ./aws/install
-                aws s3 cp function.zip s3://$S3_BUCKET/function.zip --region $AWS_REGION
+                aws s3 cp function.zip s3://$S3_BUCKET/$S3_KEY --region $AWS_REGION
               '''
             }
           }
@@ -62,37 +59,36 @@ pipeline {
       steps {
         dir('infrastructure/opentofu/aws') {
           container('python') {
-            withCredentials([
-              string(credentialsId: 'influx-token', variable: 'INFLUX_TOKEN'),
-              [$class: 'AmazonWebServicesCredentialsBinding',
-               credentialsId: 'aws-credentials',
-               accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-               secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
-            ]) {
-              sh '''
-                curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
-                unzip -q tofu_1.9.1_linux_amd64.zip
-                install -m 755 tofu /usr/local/bin/tofu
+            withCredentials([[
+              $class: 'AmazonWebServicesCredentialsBinding',
+              credentialsId: 'aws-credentials'
+            ]]) {
+              withCredentials([
+                string(credentialsId: 'influx-url', variable: 'INFLUX_URL'),
+                string(credentialsId: 'influx-token', variable: 'INFLUX_TOKEN')
+              ]) {
+                sh '''
+                  apt-get update && apt-get install -y curl unzip
+                  curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
+                  unzip -q tofu_1.9.1_linux_amd64.zip
+                  install -m 755 tofu /usr/local/bin/tofu
 
-                tofu init
-                tofu apply -auto-approve \
-                  -var="influx_url=http://seismicity.westeurope.cloudapp.azure.com:8086" \
-                  -var="influx_token=$INFLUX_TOKEN"
-              '''
+                  tofu init
+                  tofu apply -auto-approve \
+                    -var="influx_url=$INFLUX_URL" \
+                    -var="influx_token=$INFLUX_TOKEN"
+                '''
+              }
             }
           }
         }
       }
     }
-
   }
 
   post {
     failure {
       echo '❌ Κάποιο στάδιο απέτυχε.'
-    }
-    success {
-      echo '✅ Επιτυχής ανάπτυξη.'
     }
   }
 }
