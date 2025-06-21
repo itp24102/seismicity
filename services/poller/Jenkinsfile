@@ -1,26 +1,25 @@
 pipeline {
   agent {
     kubernetes {
-      yamlFile 'infrastructure/jenkins/agent-pod.yaml'
-      defaultContainer 'python'
+      yamlFile 'infrastructure/jenkins/pod.yaml'
     }
   }
 
   environment {
-    AWS_REGION = 'eu-west-1'
+    AWS_REGION = 'eu-central-1'
     S3_BUCKET = 'seismicity-app-bucket'
     FUNCTION_NAME = 'seismicity-function'
+    INFRA_DIR = 'infrastructure/opentofu/aws'
+    HANDLER_FILE = 'handler.py'
   }
 
   stages {
     stage('Install Dependencies') {
       steps {
-        container('python') {
-          dir('services/poller') {
-            sh '''
-              pip install --target build/ -r requirements.txt
-              cp src/handler.py build/
-            '''
+        dir('services/poller') {
+          container('python') {
+            sh 'pip install --target build/ -r requirements.txt'
+            sh 'cp src/${HANDLER_FILE} build/'
           }
         }
       }
@@ -28,12 +27,10 @@ pipeline {
 
     stage('Package') {
       steps {
-        container('python') {
-          dir('services/poller/build') {
-            sh '''
-              apt-get update && apt-get install -y zip
-              zip -r ../function.zip .
-            '''
+        dir('services/poller/build') {
+          container('python') {
+            sh 'apt-get update && apt-get install -y zip'
+            sh 'zip -r ../function.zip .'
           }
         }
       }
@@ -41,15 +38,13 @@ pipeline {
 
     stage('Upload to S3') {
       steps {
-        container('awscli') {
-          withCredentials([[
-            $class: 'AmazonWebServicesCredentialsBinding',
-            credentialsId: 'aws-credentials'
-          ]]) {
-            dir('services/poller') {
-              sh '''
-                aws s3 cp function.zip s3://$S3_BUCKET/function.zip --region $AWS_REGION
-              '''
+        dir('services/poller') {
+          container('awscli') {
+            withCredentials([[
+              $class: 'AmazonWebServicesCredentialsBinding',
+              credentialsId: 'aws-credentials'
+            ]]) {
+              sh 'aws s3 cp function.zip s3://${S3_BUCKET}/function.zip'
             }
           }
         }
@@ -58,22 +53,22 @@ pipeline {
 
     stage('Apply Infrastructure with OpenTofu') {
       steps {
-        container('awscli') {
-          withCredentials([[
-            $class: 'AmazonWebServicesCredentialsBinding',
-            credentialsId: 'aws-credentials'
-          ]]) {
-            dir('infrastructure/opentofu/aws') {
+        dir("${INFRA_DIR}") {
+          container('python') {
+            withCredentials([[
+              $class: 'AmazonWebServicesCredentialsBinding',
+              credentialsId: 'aws-credentials'
+            ]]) {
               sh '''
                 curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
                 unzip -q tofu_1.9.1_linux_amd64.zip
                 install -o root -g root -m 0755 tofu /usr/local/bin/tofu
                 cp ../../../services/poller/function.zip .
-                cp ../../../services/influx-writer/influx_writer.zip influx_writer.zip || true
+                cp ../../../services/influx-writer/influx_writer.zip || true
                 tofu init
                 tofu apply -auto-approve \
-                  -var=influx_url=http://seismicity.westeurope.cloudapp.azure.com:8086 \
-                  -var=influx_token=PLACEHOLDER_INFLUX_TOKEN
+                  -var="influx_url=http://seismicity.westeurope.cloudapp.azure.com:8086" \
+                  -var="influx_token=PLACEHOLDER_INFLUX_TOKEN"
               '''
             }
           }
