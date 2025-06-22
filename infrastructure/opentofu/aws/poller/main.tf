@@ -13,4 +13,8 @@ resource "aws_lambda_function" "seismicity" {
       S3_KEY_PREFIX = "events/"
     }
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }

@@ -52,4 +52,8 @@ resource "aws_lambda_function" "influx_writer" {
       INFLUX_BUCKET = "seismicity"
     }
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
