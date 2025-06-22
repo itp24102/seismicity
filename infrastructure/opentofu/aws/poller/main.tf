@@ -1,7 +1,3 @@
-provider "aws" {
-  region = var.region
-}
-
 resource "aws_lambda_function" "seismicity" {
   function_name = "seismicity-function"
   role          = var.lambda_role_arn

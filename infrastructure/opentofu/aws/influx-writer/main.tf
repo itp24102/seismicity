@@ -1,7 +1,3 @@
-provider "aws" {
-  region = var.region
-}
-
 resource "aws_iam_role" "influx_lambda_role" {
   name = "seismicity-influx-role"
 
