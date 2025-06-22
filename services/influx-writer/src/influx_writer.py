@@ -1,34 +1,41 @@
 import os
 import json
+import sys
 import logging
-from influxdb_client import InfluxDBClient, Point
+from influxdb_client import InfluxDBClient
 from influxdb_client.client.write_api import SYNCHRONOUS
-from dateutil import parser as date_parser  # ➜ νέα εισαγωγή
-from datetime import timezone
+from datetime import datetime
+from dateutil.parser import isoparse
 
-logging.basicConfig(level=logging.INFO)
+# Explicit basicConfig για AWS Lambda (stdout logging)
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
+if not logger.handlers:
+    handler = logging.StreamHandler(sys.stdout)
+    formatter = logging.Formatter('%(levelname)s\t%(asctime)s\t%(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+# Χρησιμοποίησε logger αντί για logging
 def handler(event, context):
-    logging.info("📡 Influx Writer ενεργοποιήθηκε")
-    logging.info("📥 Event received:")
-    logging.info(json.dumps(event))
+    logger.info("📡 Influx Writer ενεργοποιήθηκε")
+    logger.info("📥 Event received:")
+    logger.info(json.dumps(event))
 
     influx_url = os.environ.get("INFLUX_URL")
     influx_token = os.environ.get("INFLUX_TOKEN")
     org = os.environ.get("INFLUX_ORG", "seismicity")
     bucket = os.environ.get("INFLUX_BUCKET", "seismicity")
 
-    logging.info(f"🔧 ENV -> URL: {influx_url}, ORG: {org}, BUCKET: {bucket}")
+    logger.info(f"🔧 ENV -> URL: {influx_url}, ORG: {org}, BUCKET: {bucket}")
 
     events = event.get("events", [])
     lines = []
 
     for e in events:
         try:
-            # ➜ Χρήση dateutil για σωστό parsing
-            dt = date_parser.isoparse(e["timestamp"])
-            timestamp = int(dt.timestamp())
-
+            timestamp = int(isoparse(e["timestamp"]).timestamp())
             line = (
                 f"earthquake,"
                 f"location={escape_tag(e['location'])} "
@@ -39,21 +46,21 @@ def handler(event, context):
                 f"{timestamp}"
             )
             lines.append(line)
-            logging.info(f"🧪 Line Protocol: {line}")
+            logger.info(f"🧪 Line Protocol: {line}")
         except Exception as ex:
-            logging.error(f"❌ Σφάλμα σε εγγραφή: {e} ➜ {ex}")
+            logger.error(f"❌ Σφάλμα σε εγγραφή: {e} ➜ {ex}")
 
     if lines:
         try:
             with InfluxDBClient(url=influx_url, token=influx_token, org=org) as client:
                 write_api = client.write_api(write_options=SYNCHRONOUS)
-                logging.info(f"📤 Writing {len(lines)} points...")
+                logger.info(f"📤 Writing {len(lines)} points...")
                 write_api.write(bucket=bucket, org=org, record=lines, write_precision='s')
-                logging.info(f"✅ Καταχωρήθηκαν {len(lines)} σημεία στο InfluxDB.")
+                logger.info(f"✅ Καταχωρήθηκαν {len(lines)} σημεία στο InfluxDB.")
         except Exception as e:
-            logging.error(f"❌ Σφάλμα κατά την αποστολή στο InfluxDB: {e}")
+            logger.error(f"❌ Σφάλμα κατά την αποστολή στο InfluxDB: {e}")
     else:
-        logging.warning("⚠️ Δεν υπάρχουν σημεία προς αποστολή.")
+        logger.warning("⚠️ Δεν υπάρχουν σημεία προς αποστολή.")
 
 def escape_tag(value):
     return (
