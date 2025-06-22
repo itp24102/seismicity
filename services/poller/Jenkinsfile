@@ -5,35 +5,22 @@ pipeline {
       defaultContainer 'python'
     }
   }
+
   environment {
     AWS_REGION = 'eu-west-1'
+    S3_BUCKET  = 'seismicity-app-bucket'
   }
+
   stages {
-    stage('Install Dependencies') {
+    stage('Build ZIP') {
       steps {
         container('python') {
           dir('services/poller') {
-            sh 'pip install --target build/ -r requirements.txt'
-          }
-        }
-      }
-    }
-
-    stage('Copy Source') {
-      steps {
-        container('python') {
-          dir('services/poller') {
-            sh 'cp src/handler.py build/'
-          }
-        }
-      }
-    }
-
-    stage('Package') {
-      steps {
-        container('python') {
-          dir('services/poller/build') {
             sh '''
+              pip install --upgrade pip
+              pip install --target build/ -r requirements.txt
+              cp src/handler.py build/
+              cd build
               apt-get update && apt-get install -y zip
               zip -r ../function.zip .
             '''
@@ -50,17 +37,17 @@ pipeline {
               $class: 'AmazonWebServicesCredentialsBinding',
               credentialsId: 'aws-credentials'
             ]]) {
-              sh 'aws s3 cp function.zip s3://seismicity-app-bucket/function.zip'
+              sh 'aws s3 cp function.zip s3://$S3_BUCKET/function.zip --region $AWS_REGION'
             }
           }
         }
       }
     }
 
-    stage('Apply Infrastructure with OpenTofu') {
+    stage('Deploy with OpenTofu') {
       steps {
         container('awscli') {
-          dir('infrastructure/opentofu/aws') {
+          dir('infrastructure/opentofu/aws/poller') {
             withCredentials([[
               $class: 'AmazonWebServicesCredentialsBinding',
               credentialsId: 'aws-credentials'
@@ -68,13 +55,9 @@ pipeline {
               sh '''
                 curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
                 unzip -q tofu_1.9.1_linux_amd64.zip
-                install -o root -g root -m 0755 tofu /usr/local/bin/tofu
-                cp ../../../services/poller/function.zip .
+                install -m 0755 tofu /usr/local/bin/tofu
                 tofu init
-                tofu apply -auto-approve \
-                  -target=aws_lambda_function.seismicity \
-                  -var=influx_url=dummy \
-                  -var=influx_token=dummy
+                tofu apply -auto-approve
               '''
             }
           }
@@ -82,6 +65,7 @@ pipeline {
       }
     }
   }
+
   post {
     failure {
       echo '❌ Κάποιο στάδιο απέτυχε.'

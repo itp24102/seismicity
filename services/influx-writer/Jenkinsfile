@@ -1,17 +1,7 @@
 pipeline {
   agent {
     kubernetes {
-      yaml """
-apiVersion: v1
-kind: Pod
-spec:
-  containers:
-    - name: python
-      image: python:3.9-slim
-      command:
-        - cat
-      tty: true
-"""
+      yamlFile 'jenkins/pod.yaml'
       defaultContainer 'python'
     }
   }
@@ -25,40 +15,55 @@ spec:
   stages {
     stage('Build ZIP') {
       steps {
-        dir('services/influx-writer') {
-          sh '''
-            pip install --upgrade pip
-            pip install --target build/ -r requirements.txt
-            cp src/influx_writer.py build/
-            cd build
-            apt-get update && apt-get install -y zip
-            zip -r ../influx_writer.zip .
-          '''
+        container('python') {
+          dir('services/influx-writer') {
+            sh '''
+              pip install --upgrade pip
+              pip install --target build/ -r requirements.txt
+              cp src/influx_writer.py build/
+              cd build
+              apt-get update && apt-get install -y zip
+              zip -r ../influx_writer.zip .
+            '''
+          }
         }
       }
     }
 
     stage('Upload to S3') {
       steps {
-        dir('services/influx-writer') {
-          withCredentials([[
-            $class: 'AmazonWebServicesCredentialsBinding',
-            credentialsId: 'aws-credentials'
-          ]]) {
-            sh 'apt-get update && apt-get install -y awscli'
-            sh 'aws s3 cp influx_writer.zip s3://$S3_BUCKET/influx_writer.zip --region $AWS_REGION'
+        container('awscli') {
+          dir('services/influx-writer') {
+            withCredentials([[
+              $class: 'AmazonWebServicesCredentialsBinding',
+              credentialsId: 'aws-credentials'
+            ]]) {
+              sh 'aws s3 cp influx_writer.zip s3://$S3_BUCKET/influx_writer.zip --region $AWS_REGION'
+            }
           }
         }
       }
     }
 
-    stage('Deploy to AWS Lambda') {
+    stage('Deploy with OpenTofu') {
       steps {
-        withCredentials([[
-          $class: 'AmazonWebServicesCredentialsBinding',
-          credentialsId: 'aws-credentials'
-        ]]) {
-          sh 'aws lambda update-function-code --function-name $FUNCTION_NAME --s3-bucket $S3_BUCKET --s3-key influx_writer.zip --region $AWS_REGION'
+        container('awscli') {
+          dir('infrastructure/opentofu/aws/influx-writer') {
+            withCredentials([[
+              $class: 'AmazonWebServicesCredentialsBinding',
+              credentialsId: 'aws-credentials'
+            ]]) {
+              sh '''
+                curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
+                unzip -q tofu_1.9.1_linux_amd64.zip
+                install -m 0755 tofu /usr/local/bin/tofu
+                tofu init
+                tofu apply -auto-approve \
+                  -var=influx_url=http://seismicity.westeurope.cloudapp.azure.com:8086 \
+                  -var=influx_token=PLACEHOLDER_INFLUX_TOKEN
+              '''
+            }
+          }
         }
       }
     }
@@ -66,7 +71,7 @@ spec:
 
   post {
     failure {
-      echo "❌ Κάποιο στάδιο απέτυχε."
+      echo '❌ Κάποιο στάδιο απέτυχε.'
     }
   }
 }
