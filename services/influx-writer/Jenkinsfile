@@ -1,62 +1,53 @@
 pipeline {
   agent {
     kubernetes {
-      yamlFile 'pod.yaml'
+      yamlFile 'services/influx-writer/pod.yaml'
+      defaultContainer 'jnlp'
     }
   }
 
   environment {
-    AWS_REGION = 'eu-west-1'
-    S3_BUCKET = 'seismicity-app-bucket'
-    ZIP_FILE = 'function.zip'
+    AWS_DEFAULT_REGION = 'eu-west-1'
   }
 
   stages {
-    stage('Build ZIP') {
+    stage('Upload influx_writer.zip to S3') {
       steps {
-        container('python') {
-          dir('services/influx-writer/src') {
-            sh 'pip install -r requirements.txt -t .'
-            sh 'zip -r ../../function.zip .'
-          }
-        }
-      }
-    }
-
-    stage('Upload to S3') {
-      environment {
-        AWS_ACCESS_KEY_ID = credentials('aws-access-key-id')
-        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
-      }
-      steps {
-        container('awscli') {
-          dir('services/influx-writer') {
-            sh 'aws s3 cp function.zip s3://$S3_BUCKET/influx_writer.zip'
+        container('aws-cli') {
+          withCredentials([
+            string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+            string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+          ]) {
+            dir('services/influx-writer') {
+              sh 'aws s3 cp influx_writer.zip s3://seismicity-app-bucket/influx_writer.zip'
+            }
           }
         }
       }
     }
 
     stage('Apply Infrastructure with OpenTofu') {
-      environment {
-        AWS_ACCESS_KEY_ID = credentials('aws-access-key-id')
-        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
-        INFLUX_TOKEN = credentials('influx-token')
-      }
       steps {
-        container('awscli') {
-          dir('infrastructure/opentofu/aws/influx-writer') {
-            sh '''
-              curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
-              unzip -q tofu_1.9.1_linux_amd64.zip
-              install -o root -g root -m 0755 tofu /usr/local/bin/tofu
-              tofu init
-              tofu apply -auto-approve \
-                -var=region=$AWS_REGION \
-                -var=s3_bucket_name=$S3_BUCKET \
-                -var=influx_url=http://seismicity.westeurope.cloudapp.azure.com:8086 \
-                -var=influx_token=$INFLUX_TOKEN
-            '''
+        container('tofu') {
+          withCredentials([
+            string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+            string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY'),
+            string(credentialsId: 'influx-token', variable: 'INFLUX_TOKEN')
+          ]) {
+            dir('infrastructure/opentofu/aws/influx-writer') {
+              sh '''
+                curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
+                unzip -q tofu_1.9.1_linux_amd64.zip
+                install -o root -g root -m 0755 tofu /usr/local/bin/tofu
+                cp ../../../services/influx-writer/influx_writer.zip .
+
+                tofu init
+                tofu apply -auto-approve \
+                  -var=region=eu-west-1 \
+                  -var=influx_url=http://seismicity.westeurope.cloudapp.azure.com:8086 \
+                  -var=influx_token=$INFLUX_TOKEN
+              '''
+            }
           }
         }
       }
