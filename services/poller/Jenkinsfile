@@ -33,7 +33,10 @@ pipeline {
       steps {
         container('python') {
           dir('services/poller/build') {
-            sh 'apt-get update && apt-get install -y zip && zip -r ../function.zip .'
+            sh '''
+              apt-get update && apt-get install -y zip
+              zip -r ../function.zip .
+            '''
           }
         }
       }
@@ -47,9 +50,7 @@ pipeline {
               $class: 'AmazonWebServicesCredentialsBinding',
               credentialsId: 'aws-credentials'
             ]]) {
-              sh '''
-                aws s3 cp function.zip s3://seismicity-app-bucket/function.zip
-              '''
+              sh 'aws s3 cp function.zip s3://seismicity-app-bucket/function.zip'
             }
           }
         }
@@ -65,13 +66,15 @@ pipeline {
               credentialsId: 'aws-credentials'
             ]]) {
               sh '''
-                apt-get update && apt-get install -y curl unzip
                 curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
                 unzip -q tofu_1.9.1_linux_amd64.zip
                 install -o root -g root -m 0755 tofu /usr/local/bin/tofu
                 cp ../../../services/poller/function.zip .
                 tofu init
-                tofu apply -auto-approve -target=aws_lambda_function.seismicity
+                tofu apply -auto-approve \
+                  -target=aws_lambda_function.seismicity \
+                  -var=influx_url=dummy \
+                  -var=influx_token=dummy
               '''
             }
           }
