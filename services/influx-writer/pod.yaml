@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   labels:
-    some-label: influx-writer
+    app: influx-writer
 spec:
   containers:
     - name: python
@@ -10,21 +10,20 @@ spec:
       command:
         - cat
       tty: true
+      volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
     - name: awscli
       image: ghcr.io/itp24102/influx-writer-tofu
       command:
         - cat
       tty: true
-    - name: jnlp
-      image: jenkins/inbound-agent:alpine-jdk17
-      args: [""]
-      env:
-        - name: JENKINS_URL
-          value: http://jenkins.jenkins.svc.cluster.local:8080/
-      resources:
-        requests:
-          memory: "256Mi"
-          cpu: "100m"
+      volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
+  volumes:
+    - name: workspace-volume
+      emptyDir: {}
+  restartPolicy: Never
   nodeSelector:
     kubernetes.io/os: linux
-  restartPolicy: Never
