@@ -8,54 +8,45 @@ pipeline {
 
   environment {
     AWS_REGION = 'eu-west-1'
-    S3_BUCKET = 'seismicity-app-bucket'
-    ROLE_ARN = 'arn:aws:iam::423621632909:role/seismicity-influx-role' // <-- Δικό σου ARN
-    INFLUX_URL = 'http://seismicity.westeurope.cloudapp.azure.com:8086'
+    S3_BUCKET  = 'seismicity-app-bucket'
+    ROLE_ARN   = 'arn:aws:iam::423621632909:role/seismicity-influx-role'
   }
 
   stages {
     stage('Install Dependencies') {
       steps {
-        container('python') {
-          dir('services/influx-writer') {
-            sh 'pip install --target build/ -r requirements.txt'
-          }
+        dir('services/influx-writer') {
+          sh 'pip install --target build/ -r requirements.txt'
         }
       }
     }
 
     stage('Copy Source') {
       steps {
-        container('python') {
-          dir('services/influx-writer') {
-            sh 'cp src/influx_writer.py build/influx_writer.py'
-          }
+        dir('services/influx-writer') {
+          sh 'cp src/influx_writer.py build/influx_writer.py'
         }
       }
     }
 
     stage('Package') {
       steps {
-        container('python') {
-          dir('services/influx-writer/build') {
-            sh 'apt-get update && apt-get install -y zip && zip -r ../influx_writer.zip .'
-          }
+        dir('services/influx-writer/build') {
+          sh 'zip -r ../influx_writer.zip .'
         }
       }
     }
 
     stage('Upload to S3') {
       steps {
-        container('awscli') {
-          dir('services/influx-writer') {
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              credentialsId: 'aws-credentials'
-            ]]) {
-              sh '''
-                aws s3 cp influx_writer.zip s3://$S3_BUCKET/influx_writer.zip --region $AWS_REGION
-              '''
-            }
+        dir('services/influx-writer') {
+          withCredentials([[
+            $class: 'AmazonWebServicesCredentialsBinding',
+            credentialsId: 'aws-credentials'
+          ]]) {
+            sh '''
+              aws s3 cp influx_writer.zip s3://$S3_BUCKET/influx_writer.zip --region $AWS_REGION
+            '''
           }
         }
       }
@@ -63,26 +54,23 @@ pipeline {
 
     stage('Apply Infrastructure with OpenTofu') {
       steps {
-        container('awscli') {
-          dir('infrastructure/opentofu/aws/influx-writer') {
-            withCredentials([
-              [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials'],
-              string(credentialsId: 'influxdb-token', variable: 'INFLUX_TOKEN')
-            ]) {
-              sh '''
-                apt-get update && apt-get install -y curl unzip
-                curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
-                unzip -q tofu_1.9.1_linux_amd64.zip
-                install -o root -g root -m 0755 tofu /usr/local/bin/tofu
-                tofu init
-                tofu apply -auto-approve \
-                  -var=region=$AWS_REGION \
-                  -var=s3_bucket_name=$S3_BUCKET \
-                  -var=influx_url=$INFLUX_URL \
-                  -var=influx_token=$INFLUX_TOKEN \
-                  -var=lambda_role_arn=$ROLE_ARN
-              '''
-            }
+        dir('infrastructure/opentofu/aws/influx-writer') {
+          withCredentials([
+            [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials'],
+            string(credentialsId: 'influxdb-token', variable: 'INFLUX_TOKEN')
+          ]) {
+            sh '''
+              curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
+              unzip -q tofu_1.9.1_linux_amd64.zip
+              install -o root -g root -m 0755 tofu /usr/local/bin/tofu
+              tofu init
+              tofu apply -auto-approve \
+                -var=region=$AWS_REGION \
+                -var=s3_bucket_name=$S3_BUCKET \
+                -var=influx_url=http://seismicity.westeurope.cloudapp.azure.com:8086 \
+                -var=influx_token=$INFLUX_TOKEN \
+                -var=lambda_role_arn=$ROLE_ARN
+            '''
           }
         }
       }
