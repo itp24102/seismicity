@@ -1,9 +1,9 @@
 variable "region" {
-  description = "AWS region"
+  description = "AWS Region"
   type        = string
 }
 
-variable "s3_bucket_name" {
-  description = "S3 bucket name"
+variable "s3_bucket" {
+  description = "S3 bucket where Lambda code is uploaded"
   type        = string
 }

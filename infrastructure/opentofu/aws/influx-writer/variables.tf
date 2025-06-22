@@ -1,5 +1,5 @@
 variable "region" {
-  description = "AWS region"
+  description = "AWS Region"
   type        = string
 }
 
@@ -10,15 +10,5 @@ variable "influx_url" {
 
 variable "influx_token" {
   description = "The token for authenticating with InfluxDB"
-  type        = string
-}
-
-variable "influx_org" {
-  description = "The InfluxDB organization"
-  type        = string
-}
-
-variable "influx_bucket" {
-  description = "The InfluxDB bucket"
   type        = string
 }

@@ -2,17 +2,8 @@ provider "aws" {
   region = var.region
 }
 
-resource "aws_s3_bucket" "seismicity_bucket" {
-  bucket = var.s3_bucket_name
-
-  tags = {
-    Name        = "seismicity-app-bucket"
-    Environment = "development"
-  }
-}
-
-resource "aws_iam_role" "lambda_role" {
-  name = "seismicity-lambda-role"
+resource "aws_iam_role" "poller_lambda_role" {
+  name = "seismicity-poller-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
@@ -24,33 +15,35 @@ resource "aws_iam_role" "lambda_role" {
   })
 }
 
-resource "aws_iam_role_policy" "lambda_policy" {
-  name = "seismicity-lambda-policy"
-  role = aws_iam_role.lambda_role.id
+resource "aws_iam_role_policy" "poller_lambda_policy" {
+  name = "poller-s3-policy"
+  role = aws_iam_role.poller_lambda_role.id
 
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [{
-      Action   = ["s3:*"],
-      Effect   = "Allow",
-      Resource = aws_s3_bucket.seismicity_bucket.arn
+      Action = [
+        "s3:*"
+      ],
+      Effect = "Allow",
+      Resource = "*"
     }]
   })
 }
 
-resource "aws_lambda_function" "seismicity" {
+resource "aws_lambda_function" "poller" {
   function_name = "seismicity-function"
-  role          = aws_iam_role.lambda_role.arn
+  role          = aws_iam_role.poller_lambda_role.arn
   handler       = "handler.handler"
   runtime       = "python3.9"
 
-  s3_bucket        = aws_s3_bucket.seismicity_bucket.bucket
+  s3_bucket        = var.s3_bucket
   s3_key           = "function.zip"
   source_code_hash = filebase64sha256("function.zip")
 
   environment {
     variables = {
-      S3_BUCKET     = aws_s3_bucket.seismicity_bucket.bucket
+      S3_BUCKET     = var.s3_bucket
       S3_KEY_PREFIX = "events/"
       AWS_REGION    = var.region
     }
