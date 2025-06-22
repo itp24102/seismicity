@@ -10,7 +10,7 @@ pipeline {
     AWS_REGION = 'eu-west-1'
     S3_BUCKET = 'seismicity-app-bucket'
     INFLUX_URL = 'http://seismicity.westeurope.cloudapp.azure.com:8086'
-    INFLUX_TOKEN = credentials('influx-token')
+    INFLUX_TOKEN = credentials('influxdb-token')
   }
 
   stages {
