@@ -1,9 +1,12 @@
 variable "region" {
   description = "AWS Region"
   type        = string
-  default     = "eu-west-1"
 }
 
+variable "s3_bucket_name" {
+  description = "The S3 bucket containing the Lambda deployment package"
+  type        = string
+}
 
 variable "influx_url" {
   description = "The URL of the InfluxDB instance"

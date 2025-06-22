@@ -1,77 +1,55 @@
-pipeline {
-  agent {
-    kubernetes {
-      yamlFile 'jenkins/pod.yaml'
-      defaultContainer 'python'
-    }
-  }
+provider "aws" {
+  region = var.region
+}
+
+resource "aws_iam_role" "influx_lambda_role" {
+  name = "seismicity-influx-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Action = "sts:AssumeRole",
+      Principal = { Service = "lambda.amazonaws.com" },
+      Effect = "Allow"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "influx_lambda_policy" {
+  name = "influx-logging-policy"
+  role = aws_iam_role.influx_lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_lambda_function" "influx_writer" {
+  function_name = "influx-writer"
+  role          = aws_iam_role.influx_lambda_role.arn
+  handler       = "influx_writer.handler"
+  runtime       = "python3.9"
+
+  s3_bucket = var.s3_bucket_name
+  s3_key    = "influx_writer.zip"
 
   environment {
-    AWS_REGION = 'eu-west-1'
-    FUNCTION_NAME = 'influx-writer'
-    S3_BUCKET = 'seismicity-app-bucket'
-  }
-
-  stages {
-    stage('Build ZIP') {
-      steps {
-        container('python') {
-          dir('services/influx-writer') {
-            sh '''
-              pip install --upgrade pip
-              pip install --target build/ -r requirements.txt
-              cp src/influx_writer.py build/
-              cd build
-              apt-get update && apt-get install -y zip
-              zip -r ../influx_writer.zip .
-            '''
-          }
-        }
-      }
-    }
-
-    stage('Upload to S3') {
-      steps {
-        container('awscli') {
-          dir('services/influx-writer') {
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              credentialsId: 'aws-credentials'
-            ]]) {
-              sh 'aws s3 cp influx_writer.zip s3://$S3_BUCKET/influx_writer.zip --region $AWS_REGION'
-            }
-          }
-        }
-      }
-    }
-
-    stage('Deploy with OpenTofu') {
-      steps {
-        container('awscli') {
-          dir('infrastructure/opentofu/aws/influx-writer') {
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              credentialsId: 'aws-credentials'
-            ]]) {
-              sh '''
-                curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
-                unzip -q tofu_1.9.1_linux_amd64.zip
-                install -m 0755 tofu /usr/local/bin/tofu
-                tofu init
-                tofu apply -auto-approve \
-                  -var=influx_url=http://seismicity.westeurope.cloudapp.azure.com:8086 \
-                  -var=influx_token=PLACEHOLDER_INFLUX_TOKEN
-              '''
-            }
-          }
-        }
-      }
-    }
-  }
-
-  post {
-    failure {
-      echo '❌ Κάποιο στάδιο απέτυχε.'
+    variables = {
+      INFLUX_URL    = var.influx_url
+      INFLUX_TOKEN  = var.influx_token
+      INFLUX_ORG    = "seismicity"
+      INFLUX_BUCKET = "seismicity"
     }
   }
 }

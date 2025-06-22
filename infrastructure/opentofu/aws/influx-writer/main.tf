@@ -1,3 +1,7 @@
+provider "aws" {
+  region = var.region
+}
+
 resource "aws_iam_role" "influx_lambda_role" {
   name = "seismicity-influx-role"
 
@@ -37,8 +41,8 @@ resource "aws_lambda_function" "influx_writer" {
   handler       = "influx_writer.handler"
   runtime       = "python3.9"
 
-  filename         = "influx_writer.zip"
-  source_code_hash = filebase64sha256("influx_writer.zip")
+  s3_bucket = var.s3_bucket_name
+  s3_key    = "influx_writer.zip"
 
   environment {
     variables = {
