@@ -1,7 +1,7 @@
 pipeline {
   agent {
     kubernetes {
-      yamlFile 'jenkins/pod.yaml'
+      yamlFile 'services/influx-writer/pod.yaml'
       defaultContainer 'python'
     }
   }
@@ -9,8 +9,8 @@ pipeline {
   environment {
     AWS_REGION = 'eu-west-1'
     S3_BUCKET = 'seismicity-app-bucket'
+    ROLE_ARN = 'arn:aws:iam::423621632909:role/seismicity-influx-role' // <-- Δικό σου ARN
     INFLUX_URL = 'http://seismicity.westeurope.cloudapp.azure.com:8086'
-    INFLUX_TOKEN = credentials('influxdb-token')
   }
 
   stages {
@@ -28,7 +28,7 @@ pipeline {
       steps {
         container('python') {
           dir('services/influx-writer') {
-            sh 'cp src/influx_writer.py build/influx_writer.py && echo "def handler(event, context): return \\"OK\\"" > build/__init__.py'
+            sh 'cp src/influx_writer.py build/influx_writer.py'
           }
         }
       }
@@ -65,10 +65,10 @@ pipeline {
       steps {
         container('awscli') {
           dir('infrastructure/opentofu/aws/influx-writer') {
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              credentialsId: 'aws-credentials'
-            ]]) {
+            withCredentials([
+              [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials'],
+              string(credentialsId: 'influxdb-token', variable: 'INFLUX_TOKEN')
+            ]) {
               sh '''
                 apt-get update && apt-get install -y curl unzip
                 curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
@@ -77,8 +77,10 @@ pipeline {
                 tofu init
                 tofu apply -auto-approve \
                   -var=region=$AWS_REGION \
+                  -var=s3_bucket_name=$S3_BUCKET \
                   -var=influx_url=$INFLUX_URL \
-                  -var=influx_token=$INFLUX_TOKEN
+                  -var=influx_token=$INFLUX_TOKEN \
+                  -var=lambda_role_arn=$ROLE_ARN
               '''
             }
           }
