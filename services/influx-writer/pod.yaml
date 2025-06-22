@@ -6,29 +6,25 @@ metadata:
 spec:
   containers:
     - name: python
-      image: python:3.9-slim
+      image: ghcr.io/itp24102/influx-writer-tofu
       command:
         - cat
       tty: true
-      volumeMounts:
-        - name: workspace-volume
-          mountPath: /home/jenkins/agent
     - name: awscli
       image: ghcr.io/itp24102/influx-writer-tofu
       command:
         - cat
       tty: true
-      volumeMounts:
-        - name: workspace-volume
-          mountPath: /home/jenkins/agent
     - name: jnlp
       image: jenkins/inbound-agent:3309.v27b_9314fd1a_4-1
+      args: [""]
       env:
         - name: JENKINS_URL
           value: http://jenkins.jenkins.svc.cluster.local:8080/
-      volumeMounts:
-        - name: workspace-volume
-          mountPath: /home/jenkins/agent
-  volumes:
-    - name: workspace-volume
-      emptyDir: {}
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "100m"
+  nodeSelector:
+    kubernetes.io/os: linux
+  restartPolicy: Never

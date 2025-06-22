@@ -60,9 +60,6 @@ pipeline {
             string(credentialsId: 'influxdb-token', variable: 'INFLUX_TOKEN')
           ]) {
             sh '''
-              curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
-              unzip -q tofu_1.9.1_linux_amd64.zip
-              install -o root -g root -m 0755 tofu /usr/local/bin/tofu
               tofu init
               tofu apply -auto-approve \
                 -var=region=$AWS_REGION \
