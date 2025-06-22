@@ -2,3 +2,4 @@ requests
 boto3
 geopy
 influxdb-client==1.41.0
+python-dateutil

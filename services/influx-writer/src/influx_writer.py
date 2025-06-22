@@ -3,7 +3,8 @@ import json
 import logging
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
-from datetime import datetime
+from dateutil import parser as date_parser  # ➜ νέα εισαγωγή
+from datetime import timezone
 
 logging.basicConfig(level=logging.INFO)
 
@@ -24,7 +25,10 @@ def handler(event, context):
 
     for e in events:
         try:
-            timestamp = int(datetime.fromisoformat(e["timestamp"].replace("Z", "+00:00")).timestamp())
+            # ➜ Χρήση dateutil για σωστό parsing
+            dt = date_parser.isoparse(e["timestamp"])
+            timestamp = int(dt.timestamp())
+
             line = (
                 f"earthquake,"
                 f"location={escape_tag(e['location'])} "
