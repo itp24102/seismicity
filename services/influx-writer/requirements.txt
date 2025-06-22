@@ -1,4 +1,4 @@
 requests
 boto3
 geopy
-influxdb-client
+influxdb-client==1.41.0

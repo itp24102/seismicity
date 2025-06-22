@@ -1,56 +1,60 @@
 import os
 import json
+import logging
+from influxdb_client import InfluxDBClient, Point
+from influxdb_client.client.write_api import SYNCHRONOUS
 from datetime import datetime
-from influxdb_client import InfluxDBClient, Point, WritePrecision
 
-INFLUX_URL = os.environ.get("INFLUX_URL")
-INFLUX_TOKEN = os.environ.get("INFLUX_TOKEN")
-INFLUX_ORG = os.environ.get("INFLUX_ORG")
-INFLUX_BUCKET = os.environ.get("INFLUX_BUCKET")
+logging.basicConfig(level=logging.INFO)
 
-client = InfluxDBClient(
-    url=INFLUX_URL,
-    token=INFLUX_TOKEN,
-    org=INFLUX_ORG
-)
+def lambda_handler(event, context):
+    logging.info("📡 Influx Writer ενεργοποιήθηκε")
+    logging.info("📥 Event received:")
+    logging.info(json.dumps(event))
 
-def parse_iso_timestamp(ts):
-    try:
-        return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S.%fZ")
-    except ValueError:
-        return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
+    influx_url = os.environ.get("INFLUX_URL")
+    influx_token = os.environ.get("INFLUX_TOKEN")
+    org = os.environ.get("INFLUX_ORG", "seismicity")
+    bucket = os.environ.get("INFLUX_BUCKET", "seismicity")
 
-def handler(event, context):
-    print("📡 Influx Writer ενεργοποιήθηκε")
-    print(f"📥 Event received:\n{json.dumps(event, ensure_ascii=False)}")
-    print(f"🔧 ENV -> URL: {INFLUX_URL}, ORG: {INFLUX_ORG}, BUCKET: {INFLUX_BUCKET}")
+    logging.info(f"🔧 ENV -> URL: {influx_url}, ORG: {org}, BUCKET: {bucket}")
 
     events = event.get("events", [])
-    write_api = client.write_api()
-    points = []
+    lines = []
 
     for e in events:
         try:
-            t = parse_iso_timestamp(e["timestamp"])
-
-            point = (
-                Point("earthquake")
-                .tag("location", e["location"])
-                .field("magnitude", float(e["magnitude"]))
-                .field("depth", float(e["depth"]))
-                .field("latitude", float(e["lat"]))
-                .field("longitude", float(e["lon"]))
-                .time(t, WritePrecision.S)  # <== Αλλαγή εδώ
+            timestamp = int(datetime.fromisoformat(e["timestamp"].replace("Z", "+00:00")).timestamp())
+            line = (
+                f"earthquake,"
+                f"location={escape_tag(e['location'])} "
+                f"depth={e['depth']},"
+                f"latitude={e['lat']},"
+                f"longitude={e['lon']},"
+                f"magnitude={e['magnitude']} "
+                f"{timestamp}"
             )
-            print(f"🧪 Line Protocol: {point.to_line_protocol()}")
-            points.append(point)
+            lines.append(line)
+            logging.info(f"🧪 Line Protocol: {line}")
         except Exception as ex:
-            print(f"❌ Σφάλμα μετατροπής σεισμού: {ex}")
-            print(json.dumps(e, ensure_ascii=False, indent=2))
+            logging.error(f"❌ Σφάλμα σε εγγραφή: {e} ➜ {ex}")
 
-    if points:
-        print(f"📤 Writing {len(points)} points...")
-        write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=points)
-        print(f"✅ Καταχωρήθηκαν {len(points)} σημεία στο InfluxDB.")
+    if lines:
+        try:
+            with InfluxDBClient(url=influx_url, token=influx_token, org=org) as client:
+                write_api = client.write_api(write_options=SYNCHRONOUS)
+                logging.info(f"📤 Writing {len(lines)} points...")
+                write_api.write(bucket=bucket, org=org, record=lines, write_precision='s')
+                logging.info(f"✅ Καταχωρήθηκαν {len(lines)} σημεία στο InfluxDB.")
+        except Exception as e:
+            logging.error(f"❌ Σφάλμα κατά την αποστολή στο InfluxDB: {e}")
     else:
-        print("ℹ️ Δεν υπάρχουν έγκυρα σημεία προς καταχώρηση.")
+        logging.warning("⚠️ Δεν υπάρχουν σημεία προς αποστολή.")
+
+def escape_tag(value):
+    return (
+        value.replace("\\", "\\\\")
+             .replace(" ", "\\ ")
+             .replace(",", "\\,")
+             .replace("=", "\\=")
+    )
