@@ -52,6 +52,26 @@ pipeline {
       }
     }
 
+    stage('Update Lambda Code') {
+      steps {
+        dir('services/influx-writer') {
+          withCredentials([[
+            $class: 'AmazonWebServicesCredentialsBinding',
+            credentialsId: 'aws-credentials'
+          ]]) {
+            sh '''
+              echo "🔁 Ενημέρωση υπάρχουσας Lambda..."
+              aws lambda update-function-code \
+                --function-name influx-writer \
+                --s3-bucket $S3_BUCKET \
+                --s3-key influx_writer.zip \
+                --region $AWS_REGION
+            '''
+          }
+        }
+      }
+    }
+
     stage('Apply Infrastructure with OpenTofu') {
       steps {
         dir('infrastructure/opentofu/aws/influx-writer') {
