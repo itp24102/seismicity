@@ -8,6 +8,8 @@ pipeline {
 
   environment {
     AWS_REGION = 'eu-west-1'
+    S3_BUCKET = 'seismicity-app-bucket'
+    ROLE_ARN = 'arn:aws:iam::123456789012:role/seismicity-lambda-role' // <-- Βάλε το σωστό ARN
   }
 
   stages {
@@ -49,7 +51,9 @@ pipeline {
               $class: 'AmazonWebServicesCredentialsBinding',
               credentialsId: 'aws-credentials'
             ]]) {
-              sh 'aws s3 cp function.zip s3://seismicity-app-bucket/function.zip'
+              sh '''
+                aws s3 cp function.zip s3://$S3_BUCKET/function.zip --region $AWS_REGION
+              '''
             }
           }
         }
@@ -60,20 +64,20 @@ pipeline {
       steps {
         container('awscli') {
           dir('infrastructure/opentofu/aws/poller') {
-            withCredentials([
-              [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials'],
-              string(credentialsId: 'influxdb-token', variable: 'INFLUX_TOKEN')
-            ]) {
+            withCredentials([[
+              $class: 'AmazonWebServicesCredentialsBinding',
+              credentialsId: 'aws-credentials'
+            ]]) {
               sh '''
                 apt-get update && apt-get install -y curl unzip
                 curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
                 unzip -q tofu_1.9.1_linux_amd64.zip
                 install -o root -g root -m 0755 tofu /usr/local/bin/tofu
-                cp ../../../services/poller/function.zip .
                 tofu init
                 tofu apply -auto-approve \
-                  -var=influx_url=http://seismicity.westeurope.cloudapp.azure.com:8086 \
-                  -var=influx_token=$INFLUX_TOKEN
+                  -var=region=$AWS_REGION \
+                  -var=s3_bucket_name=$S3_BUCKET \
+                  -var=lambda_role_arn=$ROLE_ARN
               '''
             }
           }
