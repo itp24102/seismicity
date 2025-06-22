@@ -16,7 +16,7 @@ spec:
         - cat
       tty: true
     - name: jnlp
-      image: jenkins/inbound-agent:3309.v27b_9314fd1a_4-1
+      image: jenkins/inbound-agent:alpine-jdk17
       args: [""]
       env:
         - name: JENKINS_URL
