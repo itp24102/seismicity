@@ -1,25 +1,60 @@
 pipeline {
   agent {
     kubernetes {
-      yamlFile 'services/influx-writer/pod.yaml'
-      defaultContainer 'jnlp'
+      yamlFile 'jenkins/pod.yaml'
+      defaultContainer 'python'
     }
   }
 
   environment {
-    AWS_DEFAULT_REGION = 'eu-west-1'
+    AWS_REGION = 'eu-west-1'
+    S3_BUCKET = 'seismicity-app-bucket'
+    INFLUX_URL = 'http://seismicity.westeurope.cloudapp.azure.com:8086'
+    INFLUX_TOKEN = credentials('influx-token')
   }
 
   stages {
-    stage('Upload influx_writer.zip to S3') {
+    stage('Install Dependencies') {
       steps {
-        container('aws-cli') {
-          withCredentials([
-            string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-            string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
-          ]) {
-            dir('services/influx-writer') {
-              sh 'aws s3 cp influx_writer.zip s3://seismicity-app-bucket/influx_writer.zip'
+        container('python') {
+          dir('services/influx-writer') {
+            sh 'pip install --target build/ -r requirements.txt'
+          }
+        }
+      }
+    }
+
+    stage('Copy Source') {
+      steps {
+        container('python') {
+          dir('services/influx-writer') {
+            sh 'cp src/influx_writer.py build/influx_writer.py && echo "def handler(event, context): return \\"OK\\"" > build/__init__.py'
+          }
+        }
+      }
+    }
+
+    stage('Package') {
+      steps {
+        container('python') {
+          dir('services/influx-writer/build') {
+            sh 'apt-get update && apt-get install -y zip && zip -r ../influx_writer.zip .'
+          }
+        }
+      }
+    }
+
+    stage('Upload to S3') {
+      steps {
+        container('awscli') {
+          dir('services/influx-writer') {
+            withCredentials([[
+              $class: 'AmazonWebServicesCredentialsBinding',
+              credentialsId: 'aws-credentials'
+            ]]) {
+              sh '''
+                aws s3 cp influx_writer.zip s3://$S3_BUCKET/influx_writer.zip --region $AWS_REGION
+              '''
             }
           }
         }
@@ -28,23 +63,21 @@ pipeline {
 
     stage('Apply Infrastructure with OpenTofu') {
       steps {
-        container('tofu') {
-          withCredentials([
-            string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-            string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY'),
-            string(credentialsId: 'influx-token', variable: 'INFLUX_TOKEN')
-          ]) {
-            dir('infrastructure/opentofu/aws/influx-writer') {
+        container('awscli') {
+          dir('infrastructure/opentofu/aws/influx-writer') {
+            withCredentials([[
+              $class: 'AmazonWebServicesCredentialsBinding',
+              credentialsId: 'aws-credentials'
+            ]]) {
               sh '''
+                apt-get update && apt-get install -y curl unzip
                 curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
                 unzip -q tofu_1.9.1_linux_amd64.zip
                 install -o root -g root -m 0755 tofu /usr/local/bin/tofu
-                cp ../../../services/influx-writer/influx_writer.zip .
-
                 tofu init
                 tofu apply -auto-approve \
-                  -var=region=eu-west-1 \
-                  -var=influx_url=http://seismicity.westeurope.cloudapp.azure.com:8086 \
+                  -var=region=$AWS_REGION \
+                  -var=influx_url=$INFLUX_URL \
                   -var=influx_token=$INFLUX_TOKEN
               '''
             }
