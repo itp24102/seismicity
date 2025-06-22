@@ -3,12 +3,7 @@ kind: Pod
 spec:
   containers:
     - name: python
-      image: python:3.9-slim
-      command:
-        - cat
-      tty: true
-    - name: awscli
-      image: amazon/aws-cli
+      image: ghcr.io/itp24102/influx-writer-tofu:latest
       command:
         - cat
       tty: true
