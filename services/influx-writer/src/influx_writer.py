@@ -7,7 +7,7 @@ from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
 
-def lambda_handler(event, context):
+def handler(event, context):
     logging.info("📡 Influx Writer ενεργοποιήθηκε")
     logging.info("📥 Event received:")
     logging.info(json.dumps(event))
