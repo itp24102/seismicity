@@ -17,3 +17,7 @@ variable "influx_token" {
   description = "The token for authenticating with InfluxDB"
   type        = string
 }
+variable "lambda_role_arn" {
+  description = "ARN of the IAM role to assign to the Lambda function"
+  type        = string
+}
