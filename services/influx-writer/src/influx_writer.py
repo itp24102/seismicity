@@ -40,8 +40,8 @@ def handler(event, context):
                 f"earthquake,"
                 f"location={escape_tag(e['location'])} "
                 f"depth={e['depth']},"
-                f"latitude={e['lat']},"
-                f"longitude={e['lon']},"
+                f"latitude={e['latitude']},"
+                f"longitude={e['longitude']},"
                 f"magnitude={e['magnitude']} "
                 f"{timestamp}"
             )
