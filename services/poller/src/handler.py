@@ -69,8 +69,8 @@ def fetch_events_from_seismicportal(limit=200):
                     "id": event_id,
                     "timestamp": timestamp,
                     "magnitude": magnitude,
-                    "lat": lat,
-                    "lon": lon,
+                    "latitude": float(lat),
+                    "longitude": float(lon),
                     "depth": depth,
                     "location": location
                 })

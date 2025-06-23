@@ -9,8 +9,7 @@ pipeline {
   environment {
     AWS_REGION = 'eu-west-1'
     S3_BUCKET = 'seismicity-app-bucket'
-    ROLE_ARN = 'arn:aws:iam::423621632909:role/seismicity-lambda-role' // <-- Βάλε το σωστό ARN
-  }
+    ROLE_ARN = 'arn:aws:iam::423621632909:role/seismicity-lambda-role'
 
   stages {
     stage('Install Dependencies') {
