@@ -24,7 +24,7 @@ pipeline {
     stage('Copy Source') {
       steps {
         dir('services/poller') {
-          sh 'cp src/handler.py build/'
+          sh 'cp src/handler.py build/handler.py'
         }
       }
     }
