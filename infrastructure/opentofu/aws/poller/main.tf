@@ -11,6 +11,7 @@ resource "aws_lambda_function" "seismicity" {
     variables = {
       S3_BUCKET     = var.s3_bucket_name
       S3_KEY_PREFIX = "events/"
+      ZIP_HASH      = var.zip_hash   # <-- trigger redeploy
     }
   }
 

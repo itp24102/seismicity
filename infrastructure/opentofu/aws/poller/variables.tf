@@ -12,3 +12,8 @@ variable "lambda_role_arn" {
   description = "ARN of the IAM role for Lambda execution"
   type        = string
 }
+
+variable "zip_hash" {
+  type        = string
+  description = "Trigger redeployment if the function.zip changes"
+}
