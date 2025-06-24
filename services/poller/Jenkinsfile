@@ -93,9 +93,10 @@ pipeline {
       }
     }
 
-  post {
-    failure {
-      echo '❌ Κάποιο στάδιο απέτυχε.'
+    post {
+      failure {
+        echo '❌ Κάποιο στάδιο απέτυχε.'
+      }
     }
   }
 }
