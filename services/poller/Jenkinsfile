@@ -8,53 +8,65 @@ pipeline {
 
   environment {
     AWS_REGION = 'eu-west-1'
-    S3_BUCKET = 'seismicity-app-bucket'
-    ROLE_ARN = 'arn:aws:iam::423621632909:role/seismicity-lambda-role' // <-- Βάλε το σωστό ARN
+    S3_BUCKET  = 'seismicity-app-bucket'
+    ROLE_ARN   = 'arn:aws:iam::423621632909:role/seismicity-lambda-role'
   }
 
   stages {
     stage('Install Dependencies') {
       steps {
-        container('python') {
-          dir('services/poller') {
+        dir('services/poller') {
             sh 'pip install --target build/ -r requirements.txt'
-          }
         }
       }
     }
 
     stage('Copy Source') {
       steps {
-        container('python') {
-          dir('services/poller') {
-            sh 'cp src/handler.py build/'
-          }
+        dir('services/poller') {
+          sh 'cp src/handler.py build/'
         }
       }
     }
 
     stage('Package') {
       steps {
-        container('python') {
-          dir('services/poller/build') {
-            sh 'apt-get update && apt-get install -y zip && zip -r ../function.zip .'
-          }
+        dir('services/poller/build') {
+            sh 'zip -r ../function.zip .'
         }
       }
     }
 
     stage('Upload to S3') {
       steps {
-        container('awscli') {
-          dir('services/poller') {
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              credentialsId: 'aws-credentials'
-            ]]) {
-              sh '''
-                aws s3 cp function.zip s3://$S3_BUCKET/function.zip --region $AWS_REGION
-              '''
-            }
+        dir('services/poller') {
+          withCredentials([[
+            $class: 'AmazonWebServicesCredentialsBinding',
+            credentialsId: 'aws-credentials'
+          ]]) {
+            sh '''
+              aws s3 cp function.zip s3://$S3_BUCKET/function.zip --region $AWS_REGION
+            '''
+          }
+        }
+      }
+    }
+
+    stage('Update Lambda Code') {
+      steps {
+        dir('services/poller') {
+          withCredentials([[
+            $class: 'AmazonWebServicesCredentialsBinding',
+            credentialsId: 'aws-credentials'
+          ]]) {
+            sh '''
+              echo "🔁 Ενημέρωση υπάρχουσας Lambda..."
+              aws lambda update-function-code \
+                --function-name seismicity-function \
+                --s3-bucket $S3_BUCKET \
+                --s3-key function.zip \
+                --region $AWS_REGION
+            '''
           }
         }
       }
@@ -69,10 +81,6 @@ pipeline {
               credentialsId: 'aws-credentials'
             ]]) {
               sh '''
-                apt-get update && apt-get install -y curl unzip
-                curl -LO https://github.com/opentofu/opentofu/releases/download/v1.9.1/tofu_1.9.1_linux_amd64.zip
-                unzip -q tofu_1.9.1_linux_amd64.zip
-                install -o root -g root -m 0755 tofu /usr/local/bin/tofu
                 tofu init
                 tofu apply -auto-approve \
                   -var=region=$AWS_REGION \
@@ -84,7 +92,6 @@ pipeline {
         }
       }
     }
-  }
 
   post {
     failure {
