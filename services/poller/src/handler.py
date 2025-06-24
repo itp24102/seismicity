@@ -5,13 +5,22 @@ import boto3
 from datetime import datetime, timedelta
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut
+from influxdb_client import InfluxDBClient, Point, WritePrecision
 
-S3_BUCKET = os.environ.get("S3_BUCKET")
-S3_KEY_PREFIX = os.environ.get("S3_KEY_PREFIX", "events/")
-AWS_REGION = os.environ.get("AWS_REGION", "eu-west-1")  # Ενημερώθηκε σε eu-west-1
+# Environment variables
+S3_BUCKET       = os.environ.get("S3_BUCKET")
+S3_KEY_PREFIX   = os.environ.get("S3_KEY_PREFIX", "events/")
+AWS_REGION      = os.environ.get("AWS_REGION", "eu-west-1")
+INFLUX_URL      = os.environ.get("INFLUX_URL")
+INFLUX_TOKEN    = os.environ.get("INFLUX_TOKEN")
+INFLUX_ORG      = os.environ.get("INFLUX_ORG")
+INFLUX_BUCKET   = os.environ.get("INFLUX_BUCKET")
 
+# AWS clients
 s3_client = boto3.client("s3", region_name=AWS_REGION)
 lambda_client = boto3.client("lambda", region_name=AWS_REGION)
+
+# Geolocation
 geolocator = Nominatim(user_agent="seismicity-lambda")
 
 def reverse_geocode(lat, lon):
@@ -123,6 +132,20 @@ def parse_and_upload(events):
         print(f"❌ Σφάλμα κατά την εγγραφή στο S3: {e}")
     return new_events
 
+def send_heartbeat():
+    try:
+        influx = InfluxDBClient(
+            url=INFLUX_URL,
+            token=INFLUX_TOKEN,
+            org=INFLUX_ORG
+        )
+        write_api = influx.write_api()
+        point = Point("poller_heartbeat").field("alive", 1).time(datetime.utcnow(), WritePrecision.NS)
+        write_api.write(bucket=INFLUX_BUCKET, record=point)
+        print("💓 Heartbeat sent to InfluxDB")
+    except Exception as e:
+        print(f"⚠️ Failed to write heartbeat: {e}")
+
 def handler(event, context):
     print(f"🌍 Polling από SeismicPortal: {datetime.utcnow().isoformat()}Z")
     try:
@@ -146,4 +169,5 @@ def handler(event, context):
         print(f"❌ Σφάλμα: {e}")
         raise e
 
+    send_heartbeat()
     return {"statusCode": 200, "body": "Poll from SeismicPortal completed."}
