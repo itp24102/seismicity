@@ -8,8 +8,8 @@ pipeline {
 
   environment {
     AWS_REGION = 'eu-west-1'
-    S3_BUCKET = 'seismicity-app-bucket'
-    ROLE_ARN = 'arn:aws:iam::423621632909:role/seismicity-lambda-role' // <-- Βάλε το σωστό ARN
+    S3_BUCKET  = 'seismicity-app-bucket'
+    ROLE_ARN   = 'arn:aws:iam::423621632909:role/seismicity-lambda-role'
   }
 
   stages {
@@ -51,9 +51,7 @@ pipeline {
               $class: 'AmazonWebServicesCredentialsBinding',
               credentialsId: 'aws-credentials'
             ]]) {
-              sh '''
-                aws s3 cp function.zip s3://$S3_BUCKET/function.zip --region $AWS_REGION
-              '''
+              sh 'aws s3 cp function.zip s3://$S3_BUCKET/function.zip --region $AWS_REGION'
             }
           }
         }
@@ -64,7 +62,8 @@ pipeline {
       steps {
         container('awscli') {
           script {
-            env.ZIP_HASH = sh(script: "sha256sum services/poller/function.zip | awk '{print \$1}'", returnStdout: true).trim()
+            // Υπολογισμός του zip hash για trigger redeploy
+            env.ZIP_HASH = sh(script: 'sha256sum services/poller/function.zip | cut -d " " -f1', returnStdout: true).trim()
             echo "🔐 Calculated SHA256: ${env.ZIP_HASH}"
           }
 
@@ -90,12 +89,11 @@ pipeline {
         }
       }
     }
-
+  }
 
   post {
     failure {
       echo '❌ Κάποιο στάδιο απέτυχε.'
     }
   }
-}
 }
