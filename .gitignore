@@ -44,3 +44,4 @@ terraform.rc
 config.json
 *.pem
 *.key
+*.env
