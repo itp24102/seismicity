@@ -1,0 +1,46 @@
+# Αρχεία λειτουργικού συστήματος και IDE (π.χ. macOS, Windows, VSCode, PyCharm)
+.DS_Store
+Thumbs.db
+ehthumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Python (AWS Lambda) – Bytecode, cache directories, virtual environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+ENV/
+env/
+*.egg-info/
+.pytest_cache/
+
+# Build artifacts – παραγόμενα αρχεία από διαδικασίες build (π.χ. πακέτα Lambdas, zip αρχείων)
+build/
+*.zip
+
+# CI/CD: Το ArgoCD παρακολουθεί τον φάκελο `deployments/` (υπηρεσίες ingest, processor, notifier)
+# (Οι υπόλοιπες υπηρεσίες/φάκελοι ανάπτυξης είναι ανενεργοί και προβλέπονται για μελλοντική χρήση)
+docker-compose.override.yml
+
+# Infrastructure as Code (OpenTofu/Terraform) – τοπικοί φάκελοι/αρχεία state & plan που δεν παρακολουθούνται
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfplan
+crash.log
+crash.*.log
+.terraformrc
+terraform.rc
+
+# Τοπικές ρυθμίσεις & μυστικά (secrets) – να μην αποθηκεύονται ευαίσθητα δεδομένα στο repo
+.env
+.env.*
+!.env.example
+config.json
+*.pem
+*.key

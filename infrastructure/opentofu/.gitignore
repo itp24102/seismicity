@@ -1,7 +1,0 @@
-# Terraform build artifacts
-.terraform/
-*.tfstate
-*.tfstate.backup
-crash.log
-*.log
-*.tfplan
