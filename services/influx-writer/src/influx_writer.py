@@ -19,8 +19,8 @@ if not logger.handlers:
 
 # Χρησιμοποίησε logger αντί για logging
 def handler(event, context):
-    logger.info("📡 Influx Writer ενεργοποιήθηκε")
-    logger.info("📥 Event received:")
+    logger.info("Influx Writer ενεργοποιήθηκε")
+    logger.info("Event received:")
     logger.info(json.dumps(event))
 
     influx_url = os.environ.get("INFLUX_URL")
@@ -28,7 +28,7 @@ def handler(event, context):
     org = os.environ.get("INFLUX_ORG", "seismicity")
     bucket = os.environ.get("INFLUX_BUCKET", "seismicity")
 
-    logger.info(f"🔧 ENV -> URL: {influx_url}, ORG: {org}, BUCKET: {bucket}")
+    logger.info(f"ENV -> URL: {influx_url}, ORG: {org}, BUCKET: {bucket}")
 
     events = event.get("events", [])
     lines = []
@@ -54,7 +54,7 @@ def handler(event, context):
         try:
             with InfluxDBClient(url=influx_url, token=influx_token, org=org) as client:
                 write_api = client.write_api(write_options=SYNCHRONOUS)
-                logger.info(f"📤 Writing {len(lines)} points...")
+                logger.info(f"Writing {len(lines)} points...")
                 write_api.write(bucket=bucket, org=org, record=lines, write_precision='s')
                 logger.info(f"✅ Καταχωρήθηκαν {len(lines)} σημεία στο InfluxDB.")
         except Exception as e:

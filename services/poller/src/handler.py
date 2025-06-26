@@ -101,7 +101,7 @@ def parse_and_upload(events):
 
     today = datetime.utcnow().strftime("%Y-%m-%d")
     key = f"{S3_KEY_PREFIX}{today}.json"
-    print(f"📦 S3 Bucket: {S3_BUCKET}, Key: {key}")
+    print(f"S3 Bucket: {S3_BUCKET}, Key: {key}")
 
     try:
         old_data = s3_client.get_object(Bucket=S3_BUCKET, Key=key)["Body"].read().decode("utf-8")
@@ -116,7 +116,7 @@ def parse_and_upload(events):
     new_events = [e for e in events if e["id"] not in existing_ids]
 
     if not new_events:
-        print("⏭️ Δεν υπάρχουν νέα δεδομένα για αποθήκευση.")
+        print("Δεν υπάρχουν νέα δεδομένα για αποθήκευση.")
         return []
 
     combined = existing + new_events
@@ -142,7 +142,7 @@ def send_heartbeat():
         write_api = influx.write_api()
         point = Point("poller_heartbeat").field("alive", 1).time(datetime.utcnow(), WritePrecision.NS)
         write_api.write(bucket=INFLUX_BUCKET, record=point)
-        print("💓 Heartbeat sent to InfluxDB")
+        print("Heartbeat sent to InfluxDB")
     except Exception as e:
         print(f"⚠️ Failed to write heartbeat: {e}")
 
@@ -153,7 +153,7 @@ def handler(event, context):
         new_events = parse_and_upload(events)
 
         if new_events:
-            print(f"🚀 Προώθηση {len(new_events)} νέων σεισμικών δεδομένων στο influx-writer")
+            print(f"Προώθηση {len(new_events)} νέων σεισμικών δεδομένων στο influx-writer")
             try:
                 lambda_client.invoke(
                     FunctionName="influx-writer",
@@ -164,7 +164,7 @@ def handler(event, context):
                 print(f"❌ Σφάλμα κατά την κλήση του influx-writer: {e}")
                 raise e
         else:
-            print("ℹ️ Δεν υπάρχουν νέα δεδομένα προς αποστολή στο influx-writer.")
+            print("ℹΔεν υπάρχουν νέα δεδομένα προς αποστολή στο influx-writer.")
     except Exception as e:
         print(f"❌ Σφάλμα: {e}")
         raise e
