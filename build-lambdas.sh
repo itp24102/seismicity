@@ -9,7 +9,7 @@ cd - > /dev/null
 
 echo "📦 Building influx-writer Lambda zip..."
 cd services/influx-writer/src
-zip -r ../../../infrastructure/opentofu/aws/influx/function.zip .
+zip -r ../../../infrastructure/opentofu/aws/influx/influx-writer.zip .
 cd - > /dev/null
 
 echo "✅ All Lambda zips built successfully."
